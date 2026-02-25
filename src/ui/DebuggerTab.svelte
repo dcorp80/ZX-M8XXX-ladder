@@ -81,6 +81,200 @@
     let memSearchResults = $state('');
     let memSearchLastAddr = $state(-1);
 
+    // ---- Labels state ----
+    type LabelEntry = { address: number; name: string; comment?: string };
+    let labels: LabelEntry[] = $state(loadLabels());
+    let labelAddrInput = $state('');
+    let labelNameInput = $state('');
+    let labelFilterInput = $state('');
+
+    function loadLabels(): LabelEntry[] {
+        try { const s = localStorage.getItem('zx-labels'); return s ? JSON.parse(s) : []; } catch { return []; }
+    }
+    function saveLabels() { localStorage.setItem('zx-labels', JSON.stringify(labels)); }
+
+    function addLabel() {
+        const addr = parseInt(labelAddrInput, 16);
+        if (isNaN(addr) || !labelNameInput.trim()) return;
+        const existing = labels.findIndex(l => l.address === (addr & 0xffff));
+        if (existing >= 0) {
+            labels[existing] = { address: addr & 0xffff, name: labelNameInput.trim() };
+        } else {
+            labels = [...labels, { address: addr & 0xffff, name: labelNameInput.trim() }];
+        }
+        labels = labels.toSorted((a, b) => a.address - b.address);
+        saveLabels();
+        labelAddrInput = '';
+        labelNameInput = '';
+    }
+    function removeLabel(addr: number) {
+        labels = labels.filter(l => l.address !== addr);
+        saveLabels();
+    }
+    function clearLabels() { labels = []; saveLabels(); }
+    function exportLabels() {
+        const blob = new Blob([JSON.stringify(labels, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'labels.json'; a.click();
+        URL.revokeObjectURL(url);
+    }
+    let labelFileInput: HTMLInputElement;
+    function importLabels() { labelFileInput?.click(); }
+    function handleLabelFile(e: Event) {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const imported = JSON.parse(reader.result as string);
+                if (Array.isArray(imported)) {
+                    labels = [...labels, ...imported].toSorted((a, b) => a.address - b.address);
+                    // Deduplicate by address
+                    labels = labels.filter((l, i, arr) => i === 0 || l.address !== arr[i - 1].address);
+                    saveLabels();
+                }
+            } catch { console.error('Invalid labels file'); }
+        };
+        reader.readAsText(file);
+        (e.target as HTMLInputElement).value = '';
+    }
+    function filteredLabels(): LabelEntry[] {
+        const f = labelFilterInput.toLowerCase();
+        if (!f) return labels;
+        return labels.filter(l => l.name.toLowerCase().includes(f) || hex16(l.address).toLowerCase().includes(f));
+    }
+
+    // ---- Watches state ----
+    type WatchEntry = { address: number; name: string; bytes: number[] };
+    let watches: WatchEntry[] = $state(loadWatches());
+    let watchAddrInput = $state('');
+    let watchNameInput = $state('');
+
+    function loadWatches(): WatchEntry[] {
+        try {
+            const s = localStorage.getItem('zx-watches');
+            return s ? JSON.parse(s).map((w: any) => ({ ...w, bytes: [] })) : [];
+        } catch { return []; }
+    }
+    function saveWatches() {
+        localStorage.setItem('zx-watches', JSON.stringify(watches.map(w => ({ address: w.address, name: w.name }))));
+    }
+    function addWatch() {
+        const addr = parseInt(watchAddrInput, 16);
+        if (isNaN(addr)) return;
+        if (watches.length >= 10) return;
+        watches = [...watches, { address: addr & 0xffff, name: watchNameInput.trim() || hex16(addr & 0xffff), bytes: [] }];
+        saveWatches();
+        watchAddrInput = '';
+        watchNameInput = '';
+    }
+    function removeWatch(index: number) {
+        watches = watches.filter((_, i) => i !== index);
+        saveWatches();
+    }
+    function clearWatches() { watches = []; saveWatches(); }
+    function updateWatchValues() {
+        for (const w of watches) {
+            w.bytes = [];
+            for (let i = 0; i < 8; i++) {
+                w.bytes.push(emulator.peek((w.address + i) & 0xffff));
+            }
+        }
+        watches = [...watches]; // trigger reactivity
+    }
+
+    // ---- POKE search state ----
+    let pokeSnapshot: Uint8Array | null = $state(null);
+    let pokeCandidates: Set<number> | null = $state(null);
+    let pokeSearchMode = $state('dec1');
+    let pokeSearchValue = $state('');
+    let pokeStatus = $state('');
+    type PokeResult = { addr: number; oldVal: number; newVal: number };
+    let pokeResults: PokeResult[] = $state([]);
+
+    function pokeSnap() {
+        pokeSnapshot = new Uint8Array(0x10000);
+        for (let i = 0; i < 0x10000; i++) pokeSnapshot[i] = emulator.peek(i);
+        pokeCandidates = null;
+        pokeResults = [];
+        pokeStatus = 'Snapshot taken';
+    }
+    function pokeSearch() {
+        if (!pokeSnapshot) { pokeStatus = 'Take snapshot first'; return; }
+        const candidates = pokeCandidates ?? new Set(Array.from({ length: 0x10000 - 0x4000 }, (_, i) => i + 0x4000));
+        const next = new Set<number>();
+        const searchVal = parseInt(pokeSearchValue) || 0;
+
+        for (const addr of candidates) {
+            const oldVal = pokeSnapshot[addr];
+            const newVal = emulator.peek(addr);
+            let match = false;
+            switch (pokeSearchMode) {
+                case 'dec1': match = newVal === ((oldVal - 1) & 0xff); break;
+                case 'inc1': match = newVal === ((oldVal + 1) & 0xff); break;
+                case 'decreased': match = newVal < oldVal; break;
+                case 'increased': match = newVal > oldVal; break;
+                case 'changed': match = newVal !== oldVal; break;
+                case 'unchanged': match = newVal === oldVal; break;
+                case 'equals': match = newVal === (searchVal & 0xff); break;
+            }
+            if (match) next.add(addr);
+        }
+        pokeCandidates = next;
+        // Update snapshot
+        for (let i = 0; i < 0x10000; i++) pokeSnapshot[i] = emulator.peek(i);
+
+        // Build results (first 100)
+        const results: PokeResult[] = [];
+        for (const addr of next) {
+            if (results.length >= 100) break;
+            results.push({ addr, oldVal: pokeSnapshot[addr], newVal: emulator.peek(addr) });
+        }
+        pokeResults = results;
+        pokeStatus = `${next.size} candidate${next.size !== 1 ? 's' : ''}`;
+    }
+    function pokeReset() {
+        pokeSnapshot = null;
+        pokeCandidates = null;
+        pokeResults = [];
+        pokeStatus = '';
+    }
+
+    // ---- Trace state ----
+    type TraceEntry = { pc: number; bytes: number[]; mnemonic: string; af: number; bc: number; de: number; hl: number; sp: number };
+    let traceEntries: TraceEntry[] = $state([]);
+    let traceEnabled = $state(true);
+    let traceMaxEntries = $state(10000);
+    let traceSkipRom = $state(true);
+
+    function recordTrace() {
+        if (!traceEnabled || !disasm) return;
+        const s = emulator.spectrum;
+        if (!s.cpu) return;
+        const pc = s.cpu.pc;
+        if (traceSkipRom && pc < 0x4000) return;
+        const line = disasm.disassemble(pc);
+        traceEntries.push({
+            pc, bytes: line.bytes, mnemonic: line.mnemonic,
+            af: (s.cpu.a << 8) | s.cpu.f, bc: (s.cpu.b << 8) | s.cpu.c,
+            de: (s.cpu.d << 8) | s.cpu.e, hl: (s.cpu.h << 8) | s.cpu.l,
+            sp: s.cpu.sp
+        });
+        if (traceEntries.length > traceMaxEntries) traceEntries.splice(0, traceEntries.length - traceMaxEntries);
+        traceEntries = traceEntries; // trigger reactivity
+    }
+    function clearTrace() { traceEntries = []; }
+    function exportTrace() {
+        const lines = ['PC\tBytes\tMnemonic\tAF\tBC\tDE\tHL\tSP'];
+        for (const e of traceEntries) {
+            lines.push(`${hex16(e.pc)}\t${e.bytes.map(b => hex8(b)).join(' ')}\t${e.mnemonic}\t${hex16(e.af)}\t${hex16(e.bc)}\t${hex16(e.de)}\t${hex16(e.hl)}\t${hex16(e.sp)}`);
+        }
+        const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'trace.tsv'; a.click();
+        URL.revokeObjectURL(url);
+    }
+
     // Bottom panel tab definitions
     const bottomTabs = [
         { id: 'breakpoints', label: 'Breakpoints', title: 'Breakpoints and watchpoints' },
@@ -151,6 +345,9 @@
 
         // Triggers
         triggerList = emulator.getTriggers();
+
+        // Watches
+        if (activeBottomTab === 'watches') updateWatchValues();
     }
 
     function updateDisassemblyView() {
@@ -207,6 +404,7 @@
         if (!emulator.romLoaded) return;
         if (emulator.isRunning()) emulator.stop();
         disasmViewAddress = null;
+        recordTrace();
         emulator.stepInto();
         updateDebugger();
     }
@@ -215,6 +413,7 @@
         if (!emulator.romLoaded) return;
         if (emulator.isRunning()) emulator.stop();
         disasmViewAddress = null;
+        recordTrace();
         emulator.stepOver();
         updateDebugger();
     }
@@ -721,26 +920,113 @@
             </div>
             <!-- Labels Panel -->
             <div class="panel-tab-content" class:active={activeBottomTab === 'labels'}>
+                <div class="bp-add-form" style="margin-bottom: 5px;">
+                    <input type="text" bind:value={labelAddrInput} placeholder="ADDR" maxlength="4" style="width:50px" onkeydown={(e) => onEnter(e, addLabel)}>
+                    <input type="text" bind:value={labelNameInput} placeholder="Name" maxlength="20" style="width:100px" onkeydown={(e) => onEnter(e, addLabel)}>
+                    <button onclick={addLabel} title="Add label">+</button>
+                    <input type="text" bind:value={labelFilterInput} placeholder="Filter..." maxlength="20" style="width:80px">
+                    <button onclick={exportLabels} title="Export labels">Export</button>
+                    <button onclick={importLabels} title="Import labels">Import</button>
+                    <button onclick={clearLabels} title="Clear all labels">Clear</button>
+                    <input type="file" accept=".json" style="display:none" bind:this={labelFileInput} onchange={handleLabelFile}>
+                </div>
                 <div class="breakpoint-list labels-list">
-                    <div class="no-breakpoints">Labels — not yet wired</div>
+                    {#if filteredLabels().length === 0}
+                        <div class="no-breakpoints">No labels</div>
+                    {:else}
+                        {#each filteredLabels() as label}
+                            <div class="trigger-item">
+                                <span class="trigger-addr">{hex16(label.address)}</span>
+                                <span class="trigger-type">{label.name}</span>
+                                <button class="trigger-remove" onclick={() => removeLabel(label.address)} title="Remove">&times;</button>
+                            </div>
+                        {/each}
+                    {/if}
                 </div>
             </div>
             <!-- Watches Panel -->
             <div class="panel-tab-content" class:active={activeBottomTab === 'watches'}>
+                <div class="bp-add-form" style="margin-bottom: 5px;">
+                    <input type="text" bind:value={watchAddrInput} placeholder="ADDR" maxlength="4" style="width:50px" title="Address (hex)" onkeydown={(e) => onEnter(e, addWatch)}>
+                    <input type="text" bind:value={watchNameInput} placeholder="Name" maxlength="16" style="width:80px" title="Watch name (optional)" onkeydown={(e) => onEnter(e, addWatch)}>
+                    <button onclick={addWatch} title="Add memory watch (max 10)">+</button>
+                    <button onclick={clearWatches} title="Clear all watches">Clear</button>
+                    <button onclick={updateWatchValues} title="Refresh values">Refresh</button>
+                </div>
                 <div class="breakpoint-list">
-                    <div class="no-breakpoints">Watches — not yet wired</div>
+                    {#if watches.length === 0}
+                        <div class="no-breakpoints">No watches</div>
+                    {:else}
+                        {#each watches as watch, i}
+                            <div class="trigger-item">
+                                <span class="trigger-addr">{hex16(watch.address)}</span>
+                                <span class="trigger-type">{watch.name}</span>
+                                <span class="watch-bytes">{watch.bytes.map(b => hex8(b)).join(' ')}</span>
+                                <button class="trigger-remove" onclick={() => removeWatch(i)} title="Remove">&times;</button>
+                            </div>
+                        {/each}
+                    {/if}
                 </div>
             </div>
             <!-- Tools Panel -->
             <div class="panel-tab-content" class:active={activeBottomTab === 'tools'}>
+                <div class="bp-add-form" style="margin-bottom: 5px;">
+                    <span class="search-label" style="color:var(--text-secondary);font-size:11px">POKE:</span>
+                    <button onclick={pokeSnap} title="Take memory snapshot">Snap</button>
+                    <select bind:value={pokeSearchMode} style="font-size:11px;padding:3px">
+                        <option value="dec1">-1</option>
+                        <option value="inc1">+1</option>
+                        <option value="decreased">Decreased</option>
+                        <option value="increased">Increased</option>
+                        <option value="changed">Changed</option>
+                        <option value="unchanged">Unchanged</option>
+                        <option value="equals">Equals</option>
+                    </select>
+                    {#if pokeSearchMode === 'equals'}
+                        <input type="text" bind:value={pokeSearchValue} placeholder="Val" maxlength="3" style="width:35px">
+                    {/if}
+                    <button onclick={pokeSearch} title="Search candidates">Search</button>
+                    <button onclick={pokeReset} title="Reset search">Reset</button>
+                    {#if pokeStatus}<span style="color:var(--text-secondary);font-size:11px;margin-left:4px">{pokeStatus}</span>{/if}
+                </div>
                 <div class="breakpoint-list">
-                    <div class="no-breakpoints">Tools — not yet wired</div>
+                    {#if pokeResults.length === 0}
+                        <div class="no-breakpoints">{pokeSnapshot ? 'No results' : 'Take a snapshot first'}</div>
+                    {:else}
+                        {#each pokeResults as r}
+                            <div class="trigger-item">
+                                <span class="trigger-addr">{hex16(r.addr)}</span>
+                                <span class="watch-bytes">{hex8(r.newVal)}</span>
+                            </div>
+                        {/each}
+                        {#if pokeCandidates && pokeCandidates.size > 100}
+                            <div class="no-breakpoints">...and {pokeCandidates.size - 100} more</div>
+                        {/if}
+                    {/if}
                 </div>
             </div>
             <!-- Trace Panel -->
             <div class="panel-tab-content" class:active={activeBottomTab === 'trace'}>
-                <div class="breakpoint-list">
-                    <div class="no-breakpoints">Trace — not yet wired</div>
+                <div class="bp-add-form" style="margin-bottom: 5px;">
+                    <label style="font-size:11px;display:inline-flex;align-items:center;gap:3px"><input type="checkbox" bind:checked={traceEnabled}> Record</label>
+                    <label style="font-size:11px;display:inline-flex;align-items:center;gap:3px"><input type="checkbox" bind:checked={traceSkipRom}> Skip ROM</label>
+                    <button onclick={clearTrace} title="Clear trace">Clear</button>
+                    <button onclick={exportTrace} title="Export trace to TSV">Export</button>
+                    <span style="color:var(--text-secondary);font-size:11px;margin-left:4px">{traceEntries.length} entries</span>
+                </div>
+                <div class="breakpoint-list trace-list">
+                    {#if traceEntries.length === 0}
+                        <div class="no-breakpoints">No trace entries (use Step to record)</div>
+                    {:else}
+                        {#each traceEntries.slice(-50) as entry}
+                            <div class="trigger-item trace-entry">
+                                <span class="trigger-addr">{hex16(entry.pc)}</span>
+                                <span class="trace-bytes">{entry.bytes.map(b => hex8(b)).join(' ')}</span>
+                                <span class="trace-mnemonic">{entry.mnemonic}</span>
+                                <span class="trace-regs">AF={hex16(entry.af)} BC={hex16(entry.bc)} DE={hex16(entry.de)} HL={hex16(entry.hl)}</span>
+                            </div>
+                        {/each}
+                    {/if}
                 </div>
             </div>
         </div>
@@ -1592,6 +1878,36 @@
         font-size: 10px;
         text-align: center;
         padding: 5px;
+    }
+    :global(.watch-bytes) {
+        color: var(--accent);
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 11px;
+        margin-left: 4px;
+    }
+    .trace-list {
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    :global(.trace-entry) {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 10px;
+        gap: 4px;
+    }
+    :global(.trace-bytes) {
+        color: var(--text-secondary);
+        width: 60px;
+        flex-shrink: 0;
+        opacity: 0.6;
+    }
+    :global(.trace-mnemonic) {
+        color: var(--cyan);
+        width: 120px;
+        flex-shrink: 0;
+    }
+    :global(.trace-regs) {
+        color: var(--text-secondary);
+        font-size: 9px;
     }
     :global(.label-item) {
         display: flex;

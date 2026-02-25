@@ -60,7 +60,7 @@
         <SettingsTab {emulator} />
     </div>
     <div class="tab-content" class:active={activeTab === 'tools' && !collapsed} id="tab-tools">
-        <ToolsTab />
+        <ToolsTab {emulator} />
     </div>
 </div>
 
