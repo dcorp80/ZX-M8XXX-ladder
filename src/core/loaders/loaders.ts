@@ -13,8 +13,7 @@ import {
 } from '../constants';
 import { getMachineByZ80HwMode, getMachineBySzxId } from '../../machines/profiles';
 import { DSKLoader } from '../../devices/fdc';
-
-declare const pako: any;
+import * as pako from 'pako';
 
 const VERSION = '0.6.4';
 
@@ -3089,22 +3088,19 @@ export class RZXLoader {
     }
 
     async decompress(data: any, expectedSize?: number) {
-        // Prefer pako if available (more reliable error handling)
-        if (typeof pako !== 'undefined') {
-            // Try zlib format first (with header), then raw deflate
+        // Try zlib format first (with header), then raw deflate
+        try {
+            return pako.inflate(data);
+        } catch (e1) {
             try {
-                return pako.inflate(data);
-            } catch (e1) {
-                try {
-                    return pako.inflateRaw(data);
-                } catch (e2) {
-                    // Both failed - throw combined error
-                    throw new Error('Decompression failed');
-                }
+                return pako.inflateRaw(data);
+            } catch (e2) {
+                // Both failed - throw combined error
+                throw new Error('Decompression failed');
             }
         }
 
-        // Fallback to DecompressionStream (modern browsers without pako)
+        // Note: DecompressionStream fallback removed as pako is always available
         if (typeof DecompressionStream !== 'undefined') {
             try {
                 const ds = new DecompressionStream('deflate-raw');
@@ -3698,10 +3694,7 @@ export class SZXLoader {
      * Decompress zlib data (requires pako)
      */
     static decompress(data) {
-        if (typeof pako !== 'undefined') {
-            return pako.inflate(data);
-        }
-        throw new Error('pako library required for SZX decompression');
+        return pako.inflate(data);
     }
 
     /**
@@ -3977,16 +3970,14 @@ export class SZXLoader {
         let compressed = null;
         let useCompression = false;
 
-        if (typeof pako !== 'undefined') {
-            try {
-                compressed = pako.deflate(pageData);
-                // Only use compression if it actually saves space
-                if (compressed.length < pageData.length - 100) {
-                    useCompression = true;
-                }
-            } catch (e) {
-                // Compression failed, use uncompressed
+        try {
+            compressed = pako.deflate(pageData);
+            // Only use compression if it actually saves space
+            if (compressed.length < pageData.length - 100) {
+                useCompression = true;
             }
+        } catch (e) {
+            // Compression failed, use uncompressed
         }
 
         const data = useCompression ? compressed : pageData;

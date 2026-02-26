@@ -29,8 +29,8 @@ import {
     ZipLoader, RZXLoader, TRDLoader, SCLLoader, SZXLoader
 } from './loaders/loaders';
 import { UPD765, DSKLoader } from '../devices/fdc';
+import * as pako from 'pako';
 
-declare const pako: any;
 declare const APP_VERSION: string;
 
 export class Spectrum {
@@ -6246,15 +6246,11 @@ export class Spectrum {
         // Compress frame data using pako (like eric.rzx)
         let frameData;
         let isCompressed = false;
-        if (typeof pako !== 'undefined') {
-            try {
-                frameData = pako.deflate(uncompressedFrameData);
-                isCompressed = true;
-            } catch (e) {
-                console.warn('[RZX] Compression failed, using uncompressed:', e);
-                frameData = uncompressedFrameData;
-            }
-        } else {
+        try {
+            frameData = pako.deflate(uncompressedFrameData);
+            isCompressed = true;
+        } catch (e) {
+            console.warn('[RZX] Compression failed, using uncompressed:', e);
             frameData = uncompressedFrameData;
         }
 
