@@ -6732,7 +6732,7 @@ class AudioManager {
             this.gainNode.connect(this.context.destination);
 
             // Load AudioWorklet module
-            await this.context.audioWorklet.addModule('src/devices/audio/audio-processor.js');
+            await this.context.audioWorklet.addModule('audio-processor.js');
 
             // Create AudioWorkletNode
             this.workletNode = new AudioWorkletNode(this.context, 'zx-audio-processor', {

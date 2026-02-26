@@ -144,7 +144,7 @@ start:
         min-height: 0;
         transition: box-shadow 0.15s;
     }
-    .asm-editor-container.drag-over {
+    :global(.asm-editor-container.drag-over) {
         box-shadow: inset 0 0 0 3px var(--cyan);
     }
     .asm-file-tabs {
@@ -202,7 +202,7 @@ start:
         z-index: 2;
         box-sizing: border-box;
     }
-    .asm-textarea.highlighting { color: transparent; }
+    :global(.asm-textarea.highlighting) { color: transparent; }
     .asm-textarea::placeholder { color: var(--text-secondary); }
     .asm-highlight {
         position: absolute;

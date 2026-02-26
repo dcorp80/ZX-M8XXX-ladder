@@ -328,16 +328,16 @@
                 </label>
             </div>
             <div class="settings-row">
-                <label>Fullscreen:</label>
-                <select title="Fullscreen aspect ratio mode">
+                <label for="settings-fullscreen">Fullscreen:</label>
+                <select id="settings-fullscreen" title="Fullscreen aspect ratio mode">
                     <option value="crisp" selected>Crisp (integer scale)</option>
                     <option value="fit">Fit (keep aspect ratio)</option>
                     <option value="stretch">Stretch (fill screen)</option>
                 </select>
             </div>
             <div class="settings-row">
-                <label>Color Palette:</label>
-                <select value={selectedPalette} onchange={changePalette} title="Select color palette">
+                <label for="settings-palette">Color Palette:</label>
+                <select id="settings-palette" value={selectedPalette} onchange={changePalette} title="Select color palette">
                     {#each palettes as palette (palette.id)}
                         <option value={palette.id}>{palette.name}</option>
                     {/each}
@@ -414,13 +414,13 @@
                 </label>
             </div>
             <div class="settings-row">
-                <label style="min-width: 60px;">Volume:</label>
-                <input type="range" min="0" max="100" value={volume} oninput={changeVolume} style="width: 120px;">
+                <label for="settings-volume" style="min-width: 60px;">Volume:</label>
+                <input id="settings-volume" type="range" min="0" max="100" value={volume} oninput={changeVolume} style="width: 120px;">
                 <span style="min-width: 35px; text-align: right;">{volume}%</span>
             </div>
             <div class="settings-row">
-                <label>Stereo:</label>
-                <select title="Stereo panning mode" value={stereoMode} onchange={changeStereo}>
+                <label for="settings-stereo">Stereo:</label>
+                <select id="settings-stereo" title="Stereo panning mode" value={stereoMode} onchange={changeStereo}>
                     <option value="mono">Mono</option>
                     <option value="abc">ABC (A-left, B-center, C-right)</option>
                     <option value="acb">ACB (A-left, C-center, B-right)</option>

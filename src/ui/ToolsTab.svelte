@@ -40,7 +40,7 @@
     let explorerInfoHtml = $state('<span class="explorer-empty">Load a file to view its structure</span>');
     let explorerPreviewVisible = $state(false);
     let explorerPreviewLabel = $state('');
-    let previewCanvas: HTMLCanvasElement;
+    let previewCanvas = $state<HTMLCanvasElement | null>(null);
 
     // BASIC
     let explorerBasicSources: { value: string; label: string }[] = $state([]);
@@ -905,7 +905,7 @@
     // ========== COMPARE ==========
     let compareMode = $state('sna-sna');
     let compareFileA: HTMLInputElement;
-    let compareFileB: HTMLInputElement;
+    let compareFileB = $state<HTMLInputElement | null>(null);
     let compareShowEqual = $state(false);
     let compareHexDump = $state(true);
     let compareExcludeScreen = $state(true);
@@ -1359,13 +1359,13 @@
 
         <div class="compare-inputs" style="display:flex;gap:15px;flex-wrap:wrap">
             <div style="flex:1;min-width:200px">
-                <label style="display:block;margin-bottom:5px;color:var(--text-secondary);font-size:11px">File A:</label>
-                <input type="file" bind:this={compareFileA} accept=".sna,.z80,.szx,.rzx,.bin,.rom,.dat,*" style="width:100%">
+                <label for="compare-file-a" style="display:block;margin-bottom:5px;color:var(--text-secondary);font-size:11px">File A:</label>
+                <input id="compare-file-a" type="file" bind:this={compareFileA} accept=".sna,.z80,.szx,.rzx,.bin,.rom,.dat,*" style="width:100%">
             </div>
             {#if compareMode !== 'sna-emu'}
                 <div style="flex:1;min-width:200px">
-                    <label style="display:block;margin-bottom:5px;color:var(--text-secondary);font-size:11px">File B:</label>
-                    <input type="file" bind:this={compareFileB} accept=".sna,.z80,.szx,.rzx,.bin,.rom,.dat,*" style="width:100%">
+                    <label for="compare-file-b" style="display:block;margin-bottom:5px;color:var(--text-secondary);font-size:11px">File B:</label>
+                    <input id="compare-file-b" type="file" bind:this={compareFileB} accept=".sna,.z80,.szx,.rzx,.bin,.rom,.dat,*" style="width:100%">
                 </div>
             {/if}
         </div>
@@ -1424,8 +1424,8 @@
                 <button onclick={exportScreenshot} disabled={frameGrabActive}>Export</button>
             </div>
             <div class="settings-row">
-                <label>Format:</label>
-                <select bind:value={exportFormat}>
+                <label for="export-format">Format:</label>
+                <select id="export-format" bind:value={exportFormat}>
                     <option value="png">PNG</option>
                     <option value="scr">SCR (screen only)</option>
                     <option value="bsc">BSC (with border)</option>
@@ -1433,13 +1433,13 @@
                     <option value="gif">Animated GIF</option>
                     <option value="sca">SCA (animation)</option>
                 </select>
-                <label style="min-width:auto;margin-left:10px;margin-right:-6px">Max:</label>
-                <input type="number" bind:value={exportMaxFrames} min="0" style="width:50px">
+                <label for="export-max-frames" style="min-width:auto;margin-left:10px;margin-right:-6px">Max:</label>
+                <input id="export-max-frames" type="number" bind:value={exportMaxFrames} min="0" style="width:50px">
                 <span style="color:var(--text-secondary);font-size:11px">(0=inf)</span>
             </div>
             <div class="settings-row">
-                <label>Size:</label>
-                <select bind:value={exportSize}>
+                <label for="export-size">Size:</label>
+                <select id="export-size" bind:value={exportSize}>
                     <option value="screen">Screen only (256x192)</option>
                     <option value="normal">Normal border</option>
                     <option value="full">Full border</option>
@@ -1449,10 +1449,10 @@
             </div>
             {#if showSpriteRegion}
                 <div class="settings-row sprite-region-row">
-                    <span class="sprite-input-group"><label>X:</label><input type="number" bind:value={exportSpriteX} min="0" max="255"></span>
-                    <span class="sprite-input-group"><label>Y:</label><input type="number" bind:value={exportSpriteY} min="0" max="191"></span>
-                    <span class="sprite-input-group"><label>W:</label><input type="number" bind:value={exportSpriteW} min="1" max="256"></span>
-                    <span class="sprite-input-group"><label>H:</label><input type="number" bind:value={exportSpriteH} min="1" max="192"></span>
+                    <span class="sprite-input-group"><label for="export-sprite-x">X:</label><input id="export-sprite-x" type="number" bind:value={exportSpriteX} min="0" max="255"></span>
+                    <span class="sprite-input-group"><label for="export-sprite-y">Y:</label><input id="export-sprite-y" type="number" bind:value={exportSpriteY} min="0" max="191"></span>
+                    <span class="sprite-input-group"><label for="export-sprite-w">W:</label><input id="export-sprite-w" type="number" bind:value={exportSpriteW} min="1" max="256"></span>
+                    <span class="sprite-input-group"><label for="export-sprite-h">H:</label><input id="export-sprite-h" type="number" bind:value={exportSpriteH} min="1" max="192"></span>
                 </div>
             {/if}
             <div class="settings-row frame-export-controls">

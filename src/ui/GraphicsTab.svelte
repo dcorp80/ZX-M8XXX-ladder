@@ -398,11 +398,11 @@
         </div>
         <div class="gfx-col-address">
             <div class="gfx-control-group">
-                <label>Address</label>
-                <input type="text" class="gfx-addr-input" bind:value={addrInput} maxlength="4" title="Memory address in hex (Enter to apply)" onkeydown={(e) => onEnter(e, goToAddress)}>
+                <label for="gfx-addr-input">Address</label>
+                <input id="gfx-addr-input" type="text" class="gfx-addr-input" bind:value={addrInput} maxlength="4" title="Memory address in hex (Enter to apply)" onkeydown={(e) => onEnter(e, goToAddress)}>
             </div>
             <div class="gfx-control-group">
-                <label>Navigate</label>
+                <span class="gfx-group-label">Navigate</span>
                 <div class="gfx-nav-buttons">
                     <button onclick={navByteBack} title="Back 1 byte">-1</button>
                     <button onclick={navByteFwd} title="Forward 1 byte">+1</button>
@@ -425,7 +425,7 @@
                 </div>
             </div>
             <div class="gfx-control-group">
-                <label>Width (bytes)</label>
+                <span class="gfx-group-label">Width (bytes)</span>
                 <div class="gfx-spinner">
                     <button onclick={() => setWidth(1)} title="Minimum width (1 byte)" disabled={widthBytes <= 1}>|&lt;</button>
                     <button onclick={() => setWidth(widthBytes - 1)} title="Decrease width" disabled={widthBytes <= 1}>-</button>
@@ -435,7 +435,7 @@
                 </div>
             </div>
             <div class="gfx-control-group">
-                <label>Height (lines)</label>
+                <span class="gfx-group-label">Height (lines)</span>
                 <div class="gfx-spinner">
                     <button onclick={heightDec8} title="Decrease height by 8 lines" disabled={heightRows <= 8}>-8</button>
                     <button onclick={() => setHeight(heightRows - 1)} title="Decrease height" disabled={heightRows <= 1}>-</button>
@@ -455,7 +455,7 @@
                 </div>
             </div>
             <div class="gfx-control-group">
-                <label>Preview</label>
+                <span class="gfx-group-label">Preview</span>
                 <div class="gfx-preview-wrap">
                     <canvas class="gfx-preview-canvas" bind:this={previewCanvas}></canvas>
                 </div>
@@ -464,8 +464,8 @@
         </div>
         <div class="gfx-col-actions">
             <div class="gfx-control-group">
-                <label>Comment</label>
-                <input type="text" bind:value={commentText} placeholder="Sprite name..." maxlength="40" title="Label for the graphics region">
+                <label for="gfx-comment-input">Comment</label>
+                <input id="gfx-comment-input" type="text" bind:value={commentText} placeholder="Sprite name..." maxlength="40" title="Label for the graphics region">
             </div>
             <div class="gfx-control-group gfx-actions">
                 <button title="Mark selected area as graphics region (not yet wired)">Mark</button>
@@ -522,7 +522,8 @@
         border-radius: 4px;
         padding: 8px;
     }
-    .gfx-control-group label {
+    .gfx-control-group label,
+    .gfx-control-group .gfx-group-label {
         display: block;
         font-size: 10px;
         color: var(--text-secondary);

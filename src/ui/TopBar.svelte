@@ -3,7 +3,12 @@
     import { MACHINE_PROFILES, DEFAULT_VISIBLE_MACHINES } from '../machines/profiles';
     import { fetchRoms, applyRoms } from '../core/rom-loader';
 
-    let { emulator }: { emulator: EmulatorController } = $props();
+    let { emulator, onHelpClick, onGameBrowserClick, onMemoryMapClick }: {
+        emulator: EmulatorController;
+        onHelpClick?: () => void;
+        onGameBrowserClick?: () => void;
+        onMemoryMapClick?: () => void;
+    } = $props();
 
     // Machine selector state
     let visibleMachines = $state(getVisibleMachines());
@@ -65,8 +70,10 @@
 
         if (action === 'file') {
             fileInput.click();
+        } else if (action === 'browse') {
+            onGameBrowserClick?.();
         }
-        // TODO: 'browse' (web game browser), 'project', 'quick' — future steps
+        // TODO: 'project', 'quick' — future steps
     }
 
     async function handleFileSelected(e: Event) {
@@ -132,7 +139,7 @@
         <option value="project">Project</option>
         <option value="quick">Quick (F2)</option>
     </select>
-    <button class="test-link" title="ZX-M8XXX — Help">Help</button>
+    <button class="test-link" title="ZX-M8XXX — Help" onclick={() => onHelpClick?.()}>Help</button>
     <button class="theme-btn" title="Toggle light/dark theme" onclick={toggleTheme}>☀️</button>
     <input type="file" class="file-input" accept=".sna,.tap,.tzx,.z80,.szx,.zip,.rzx,.trd,.scl,.dsk" bind:this={fileInput} onchange={handleFileSelected}>
 </div>

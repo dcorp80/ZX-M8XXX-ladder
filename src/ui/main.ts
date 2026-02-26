@@ -48,18 +48,18 @@ const app = mount(App, {
 // ---- Boot sequence ----
 
 async function boot() {
-  const romData = await fetchRoms();
-
-  if (!controller.applyRoms(romData)) {
-    console.error('Required ROM not found in roms/ — ROM selection UI not yet implemented');
-    return;
-  }
-
-  controller.reset();
-  controller.start();
-
   restoreSettings();
   setupDeferredAudio();
+
+  const romData = await fetchRoms();
+
+  if (controller.applyRoms(romData)) {
+    controller.reset();
+    controller.start();
+  } else {
+    // 48.rom not found — let user provide ROMs manually
+    app.showRomSelector();
+  }
 }
 
 function restoreSettings() {

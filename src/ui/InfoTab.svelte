@@ -29,7 +29,7 @@
         <!-- I/O Sub-tab -->
         <div class="info-subtab-content" class:active={activeSubtab === 'io'} id="info-io">
             <div class="keyboard-image">
-                <img src="public/keyboard.png" alt="ZX Spectrum Keyboard Layout">
+                <img src="keyboard.png" alt="ZX Spectrum Keyboard Layout">
             </div>
 
             <div class="info-section">

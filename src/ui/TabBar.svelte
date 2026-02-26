@@ -7,7 +7,10 @@
     import ToolsTab from './ToolsTab.svelte';
 
     import type { EmulatorController } from '../core/emulator-controller';
-    let { emulator }: { emulator: EmulatorController } = $props();
+    let { emulator, onMemoryMapClick }: {
+        emulator: EmulatorController;
+        onMemoryMapClick?: () => void;
+    } = $props();
 
     let activeTab = $state('debugger');
     let collapsed = $state(false);
@@ -45,7 +48,7 @@
     </div>
 
     <div class="tab-content" class:active={activeTab === 'debugger' && !collapsed} id="tab-debugger">
-        <DebuggerTab {emulator} />
+        <DebuggerTab {emulator} {onMemoryMapClick} />
     </div>
     <div class="tab-content" class:active={activeTab === 'assembler' && !collapsed} id="tab-assembler">
         <AssemblerTab {emulator} />
