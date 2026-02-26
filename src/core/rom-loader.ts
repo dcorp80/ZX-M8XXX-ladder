@@ -20,7 +20,10 @@ export async function fetchRoms(basePath = 'roms/'): Promise<Map<string, ArrayBu
     await Promise.all([...files].map(async (file) => {
         try {
             const resp = await fetch(basePath + file);
-            if (resp.ok) romData.set(file, await resp.arrayBuffer());
+            if (resp.ok) {
+                romData.set(file, await resp.arrayBuffer());
+                console.log(`Loaded ${basePath}${file}`);
+            }
         } catch {}
     }));
 

@@ -5,6 +5,9 @@ import { Spectrum } from '../core/spectrum'
 import { EmulatorControllerImpl } from '../core/emulator-controller'
 import { fetchRoms } from '../core/rom-loader'
 
+declare const APP_VERSION: string;
+console.log('ZX-M8XXX v' + APP_VERSION);
+
 const canvas = document.getElementById('screen') as HTMLCanvasElement
 const overlayCanvas = document.getElementById('overlayCanvas') as HTMLCanvasElement
 
@@ -47,11 +50,32 @@ const app = mount(App, {
 
 // ---- Boot sequence ----
 
+async function tryLoadRomLabels() {
+  const lm = (controller.spectrum as any).labelManager;
+  if (!lm) return;
+
+  const labelPaths = ['labels/48k.json', 'labels/rom48.json', 'labels/spectrum48.json'];
+  for (const path of labelPaths) {
+    try {
+      const resp = await fetch(path);
+      if (resp.ok) {
+        const jsonStr = await resp.text();
+        const count = lm.loadRomLabels(jsonStr);
+        if (count > 0) {
+          console.log(`Loaded ${count} ROM labels from ${path}`);
+          return;
+        }
+      }
+    } catch {}
+  }
+}
+
 async function boot() {
   restoreSettings();
   setupDeferredAudio();
 
   const romData = await fetchRoms();
+  await tryLoadRomLabels();
 
   if (controller.applyRoms(romData)) {
     controller.reset();
@@ -60,6 +84,12 @@ async function boot() {
     // 48.rom not found — let user provide ROMs manually
     app.showRomSelector();
   }
+
+  console.log('');
+  console.log('Usage:');
+  console.log('1. Place ROMs in roms/ directory (48.rom, 128.rom, plus2.rom, plus2a.rom, pentagon.rom, scorpion.rom, trdos.rom)');
+  console.log('2. Or select ROM files in dialog if not found');
+  console.log('3. Load SNA/Z80/SZX snapshots, TAP/TZX tapes, or TRD/SCL disk images');
 }
 
 function restoreSettings() {

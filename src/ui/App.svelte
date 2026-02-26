@@ -13,6 +13,7 @@
     import { PaletteManager } from '../core/palette-manager';
     import './debugger-global.css';
 
+    import Toaster from './Toaster.svelte';
     import type { EmulatorController } from '../core/emulator-controller';
     let { emulator }: { emulator: EmulatorController } = $props();
 
@@ -64,6 +65,8 @@
         <TabBar {emulator} onMemoryMapClick={() => memoryMapDialog?.show()} />
     </div>
 </div>
+
+<Toaster />
 
 <!-- Modals -->
 <HelpDialog bind:this={helpDialog} />

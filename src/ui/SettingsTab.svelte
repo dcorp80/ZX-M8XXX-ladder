@@ -3,6 +3,7 @@
     import type { EmulatorController } from '../core/emulator-controller';
     import { MACHINE_PROFILES, DEFAULT_VISIBLE_MACHINES, getMachineTypes } from '../machines/profiles';
     import { PaletteManager, type Palette } from '../core/palette-manager';
+    import { showMessage } from './toast.svelte';
 
     let { emulator }: { emulator: EmulatorController } = $props();
 
@@ -24,6 +25,13 @@
     let lateTimings = $state(localStorage.getItem('zxm8_lateTiming') === 'true');
     let palettes: Palette[] = $state([]);
     let selectedPalette = $state('default');
+    let paletteColors = $derived(PaletteManager.getPalette(selectedPalette)?.colors ?? []);
+
+    // ---- ULA+ state ----
+    let ulaPlusEnabled = $state(localStorage.getItem('zxm8_ulaplus') === 'true');
+    let ulaPlusStatus = $state('');
+    let ulaPlusShowPreview = $state(false);
+    let ulaplusPaletteGrid = $state<HTMLDivElement | null>(null);
 
     // ---- Input state ----
     let kempstonEnabled = $state(false);
@@ -271,9 +279,88 @@
         selectedPalette = id;
     }
 
+    // ---- Fullscreen handler ----
+
+    function changeFullscreenMode(e: Event) {
+        const value = (e.target as HTMLSelectElement).value;
+        localStorage.setItem('zx-fullscreen-mode', value);
+    }
+
+    // ---- ULA+ handlers ----
+
+    function updateULAplusStatus() {
+        const ula = emulator.spectrum.ula;
+        if (!ula.ulaplus.enabled) {
+            ulaPlusStatus = '';
+            ulaPlusShowPreview = false;
+        } else if (ula.ulaplus.paletteEnabled) {
+            ulaPlusStatus = '(palette active)';
+            ulaPlusShowPreview = true;
+            updateULAplusPalettePreview();
+        } else {
+            ulaPlusStatus = '(hardware present)';
+            ulaPlusShowPreview = false;
+        }
+    }
+
+    function updateULAplusPalettePreview() {
+        if (!ulaplusPaletteGrid) return;
+        const palette = emulator.spectrum.ula.ulaplus.palette;
+        const cells = ulaplusPaletteGrid.children;
+        for (let i = 0; i < 64; i++) {
+            const grb = palette[i];
+            const g3 = (grb >> 5) & 0x07;
+            const r3 = (grb >> 2) & 0x07;
+            const b2 = grb & 0x03;
+            const r = (r3 << 5) | (r3 << 2) | (r3 >> 1);
+            const g = (g3 << 5) | (g3 << 2) | (g3 >> 1);
+            const b = (b2 << 6) | (b2 << 4) | (b2 << 2) | b2;
+            (cells[i] as HTMLElement).style.backgroundColor = `rgb(${r},${g},${b})`;
+        }
+    }
+
+    function toggleULAplus() {
+        ulaPlusEnabled = !ulaPlusEnabled;
+        emulator.spectrum.ula.ulaplus.enabled = ulaPlusEnabled;
+        localStorage.setItem('zxm8_ulaplus', String(ulaPlusEnabled));
+        updateULAplusStatus();
+        emulator.redraw();
+        showMessage(ulaPlusEnabled ? 'ULA+ enabled' : 'ULA+ disabled');
+    }
+
+    function resetULAplus() {
+        emulator.spectrum.ula.resetULAplus();
+        updateULAplusStatus();
+        emulator.redraw();
+        showMessage('ULAplus palette reset');
+    }
+
     onMount(() => {
         palettes = PaletteManager.getPalettes();
         selectedPalette = PaletteManager.getCurrent();
+
+        // Initialize ULAplus palette grid (4 rows x 16 colors)
+        if (ulaplusPaletteGrid) {
+            for (let i = 0; i < 64; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'ulaplus-palette-cell';
+                cell.dataset.index = String(i);
+                ulaplusPaletteGrid.appendChild(cell);
+            }
+        }
+
+        // Apply saved ULA+ state
+        emulator.spectrum.ula.ulaplus.enabled = ulaPlusEnabled;
+        updateULAplusStatus();
+
+        // Periodically update palette preview when active
+        const interval = setInterval(() => {
+            if (emulator.spectrum.ula.ulaplus.enabled && emulator.spectrum.ula.ulaplus.paletteEnabled) {
+                updateULAplusStatus();
+            }
+        }, 500);
+
+        return () => clearInterval(interval);
     });
 </script>
 
@@ -329,7 +416,7 @@
             </div>
             <div class="settings-row">
                 <label for="settings-fullscreen">Fullscreen:</label>
-                <select id="settings-fullscreen" title="Fullscreen aspect ratio mode">
+                <select id="settings-fullscreen" title="Fullscreen aspect ratio mode" onchange={changeFullscreenMode}>
                     <option value="crisp" selected>Crisp (integer scale)</option>
                     <option value="fit">Fit (keep aspect ratio)</option>
                     <option value="stretch">Stretch (fill screen)</option>
@@ -342,6 +429,33 @@
                         <option value={palette.id}>{palette.name}</option>
                     {/each}
                 </select>
+            </div>
+            {#if paletteColors.length >= 16}
+            <div class="palette-preview" id="palettePreview">
+                <div class="palette-row">
+                    <span class="palette-row-label">Normal</span>
+                    {#each [0,1,2,3,4,5,6,7] as i}
+                        <span class="palette-color" data-index={i} title="{i}: {paletteColors[i]}" style="background-color: {paletteColors[i]};"></span>
+                    {/each}
+                </div>
+                <div class="palette-row">
+                    <span class="palette-row-label">Bright</span>
+                    {#each [0,1,2,3,4,5,6,7] as i}
+                        <span class="palette-color" data-index={i} data-bright="true" title="{i}: {paletteColors[i+8]}" style="background-color: {paletteColors[i+8]};"></span>
+                    {/each}
+                </div>
+            </div>
+            {/if}
+            <div class="settings-row" style="margin-top: 10px;">
+                <label class="checkbox-label" title="Enable ULAplus extended palette support (64 colors)">
+                    <input type="checkbox" checked={ulaPlusEnabled} onchange={toggleULAplus}> ULA+
+                </label>
+                <button style="margin-left: 10px; padding: 2px 8px; font-size: 11px;" title="Reset ULAplus palette to defaults" onclick={resetULAplus}>Reset</button>
+                <span style="margin-left: 10px; color: var(--text-dim); font-size: 11px;">{ulaPlusStatus}</span>
+            </div>
+            <div class="ulaplus-palette-preview" class:hidden={!ulaPlusShowPreview}>
+                <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">ULA+ Palette (4 CLUTs × 16 colors)</div>
+                <div class="ulaplus-palette-grid" bind:this={ulaplusPaletteGrid}></div>
             </div>
         </div>
     </div>
@@ -559,5 +673,56 @@
     }
     .control-btn:hover {
         background: var(--bg-button-hover);
+    }
+    .palette-preview {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 8px;
+    }
+    .palette-row {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+    }
+    .palette-row-label {
+        font-size: 10px;
+        color: var(--text-secondary);
+        width: 42px;
+        text-align: right;
+        margin-right: 4px;
+    }
+    .palette-color {
+        width: 28px;
+        height: 28px;
+        border: 1px solid var(--border-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: bold;
+        color: #000;
+        text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+    }
+    .palette-color::after {
+        content: attr(data-index);
+        border-radius: 2px;
+    }
+    .ulaplus-palette-preview {
+        margin-top: 8px;
+    }
+    .ulaplus-palette-preview.hidden {
+        display: none;
+    }
+    .ulaplus-palette-grid {
+        display: grid;
+        grid-template-columns: repeat(16, 14px);
+        grid-template-rows: repeat(4, 14px);
+        gap: 1px;
+    }
+    :global(.ulaplus-palette-cell) {
+        width: 14px;
+        height: 14px;
+        border: 1px solid var(--border-secondary);
     }
 </style>
