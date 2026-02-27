@@ -19,7 +19,7 @@ const gfxInfo = document.getElementById('gfxInfo');
 export let gfxSpriteAddress = 0x3000; // Current sprite/view address
 
 // --- Constants ---
-export const GFX_DUMP_COLS = 24;  // Bytes per row in dump view
+export const GFX_DUMP_COLS = 32;  // Bytes per row in dump view
 export const GFX_DUMP_ROWS = 302;  // Rows visible
 
 // --- External dependencies ---
@@ -65,7 +65,7 @@ export function renderGfxDump() {
     const params = getGfxParams();
     const zoom = document.getElementById('gfxZoom3').checked ? 3 :
                  document.getElementById('gfxZoom2').checked ? 2 : 1;
-    const canvasWidth = GFX_DUMP_COLS * 8 * zoom;
+    const canvasWidth = params.widthBytes * 8 * zoom;
     const canvasHeight = GFX_DUMP_ROWS * zoom;
     const anchorRow = 8;  // Selection anchored at row 8 (row 1 in 8-row terms)
 

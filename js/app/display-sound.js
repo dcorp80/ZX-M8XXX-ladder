@@ -341,6 +341,9 @@ export function setZoom(level, spectrum) {
         btn.classList.toggle('active', i + 1 === level);
     });
 
+    // Shift tabs left in landscape mode at higher zoom levels
+    document.getElementById('tabContainer').classList.toggle('zoom-shifted', level >= 2);
+
     // Re-render current frame after zoom change
     spectrum.renderToScreen();
 

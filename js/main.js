@@ -12,7 +12,7 @@
 //   app/        — state, ui-framework, test-runner, rom-manager, emulator-control,
 //                  input-handler, display-sound, media-io, project-io
 
-const APP_VERSION = '0.9.27';
+const APP_VERSION = '0.9.31';
 
 // ── Core ────────────────────────────────────────────────────────────
 import { Spectrum } from './core/spectrum.js';
@@ -23,6 +23,7 @@ import { getMachineProfile, getMachineTypes, MACHINE_PROFILES, DEFAULT_VISIBLE_M
 
 // ── sjasmplus ───────────────────────────────────────────────────────
 import { Assembler as SjASMPlus } from './sjasmplus/assembler.js';
+import { VFS } from './sjasmplus/vfs.js';
 
 // ── Data ────────────────────────────────────────────────────────────
 import { REGION_TYPES, OPERAND_FORMATS } from './data/region-types.js';
@@ -59,6 +60,7 @@ import { SubroutineManager } from './managers/subroutine-manager.js';
 import { FoldManager } from './managers/fold-manager.js';
 import { UndoManager } from './managers/undo-manager.js';
 import { TraceManager } from './managers/trace-manager.js';
+import { SignaturePackManager } from './managers/signature-pack-manager.js';
 
 // ── Views ───────────────────────────────────────────────────────────
 import {
@@ -102,6 +104,7 @@ import {
 import { initFrameExport } from './views/frame-export.js';
 import { initGameBrowser } from './views/game-browser.js';
 import { initRzxRecording } from './views/rzx-recording.js';
+import { initSignaturesUI } from './views/signatures-ui.js';
 
 // ── App orchestration ───────────────────────────────────────────────
 import { setState } from './app/state.js';
@@ -162,6 +165,8 @@ const subroutineManager   = new SubroutineManager();
 const foldManager         = new FoldManager();
 const undoManager         = new UndoManager();
 const traceManager        = new TraceManager();
+const signaturePackManager = new SignaturePackManager();
+signaturePackManager.setAssembler(SjASMPlus, VFS);
 
 // ═════════════════════════════════════════════════════════════════════
 // 2. DOM element refs (toolbar + core)
@@ -259,6 +264,8 @@ const ixiyRegisters     = document.getElementById('ixiyRegisters');
 const indexRegisters    = document.getElementById('indexRegisters');
 const flagsDisplay      = document.getElementById('flagsDisplay');
 const statusRegisters   = document.getElementById('statusRegisters');
+const regRItem          = document.getElementById('regRItem');
+const callStackView     = document.getElementById('callStackView');
 const pagesInfo         = document.getElementById('pagesInfo');
 
 // Disk activity
@@ -557,6 +564,7 @@ initAssemblerTab({
     hex16,
     downloadFile,
     updateDebugger,
+    updateLabelsList,
     goToAddress,
     labelManager,
     regionManager,
@@ -600,6 +608,17 @@ initRzxRecording({
     spectrum,
     showMessage,
     getExportBaseName
+});
+
+// Signature packs UI
+initSignaturesUI({
+    signaturePackManager,
+    spectrum,
+    labelManager,
+    regionManager,
+    showMessage,
+    updateDebugger,
+    ZipLoader
 });
 
 // Text scanner
@@ -968,6 +987,7 @@ altRegisters.addEventListener('click', regClickHandler);
 ixiyRegisters.addEventListener('click', regClickHandler);
 indexRegisters.addEventListener('click', regClickHandler);
 statusRegisters.addEventListener('click', regClickHandler);
+regRItem.addEventListener('click', regClickHandler);
 pagesInfo.addEventListener('click', regClickHandler);
 
 // Flag toggle
@@ -1732,6 +1752,192 @@ document.addEventListener('keydown', (e) => {
             if (typeof window.updateTraceList === 'function') window.updateTraceList();
             showMessage('Returned to live view');
         }
+        return;
+    }
+
+    // PageUp/PageDown - Scroll disassembly view
+    if (e.key === 'PageUp' || e.key === 'PageDown') {
+        e.preventDefault();
+        const disasm = getDisasm();
+        if (!disasm) return;
+        const delta = e.key === 'PageDown' ? DISASM_LINES * 2 : -(DISASM_LINES * 2);
+        const lpt = getLeftPanelType();
+        const rpt = getRightPanelType();
+        if (lpt === 'disasm') {
+            let dva = getDisasmViewAddress();
+            if (dva === null && spectrum.cpu) dva = spectrum.cpu.pc;
+            if (dva !== null) {
+                setDisasmViewAddress((dva + delta) & 0xffff);
+                const disasmAddressInput = document.getElementById('disasmAddress');
+                if (disasmAddressInput) disasmAddressInput.value = hex16((dva + delta) & 0xffff);
+                updateDebugger();
+            }
+        } else if (rpt === 'disasm') {
+            let rdva = getRightDisasmViewAddress();
+            if (rdva === null && spectrum.cpu) rdva = spectrum.cpu.pc;
+            if (rdva !== null) {
+                goToRightDisasmAddress(rdva + delta);
+            }
+        }
+        return;
+    }
+
+    // Paused-mode hotkeys: bookmarks and tilde-run
+    if (!spectrum.isRunning() && !e.ctrlKey && !e.altKey) {
+        // Tilde (`) - Resume emulation
+        if (e.key === '`' || e.key === '~') {
+            e.preventDefault();
+            if (spectrum.romLoaded) {
+                spectrum.start();
+                updateStatus();
+                showMessage('Resumed');
+            }
+            return;
+        }
+
+        // ArrowUp/ArrowDown - scroll disasm by 1 line
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const disasm = getDisasm();
+            if (!disasm) return;
+            const delta = e.key === 'ArrowDown' ? 2 : -2;
+            const lpt = getLeftPanelType();
+            const rpt = getRightPanelType();
+            if (lpt === 'disasm') {
+                let dva = getDisasmViewAddress();
+                if (dva === null && spectrum.cpu) dva = spectrum.cpu.pc;
+                if (dva !== null) {
+                    setDisasmViewAddress((dva + delta) & 0xffff);
+                    const disasmAddressInput = document.getElementById('disasmAddress');
+                    if (disasmAddressInput) disasmAddressInput.value = hex16((dva + delta) & 0xffff);
+                    updateDebugger();
+                }
+            } else if (rpt === 'disasm') {
+                let rdva = getRightDisasmViewAddress();
+                if (rdva === null && spectrum.cpu) rdva = spectrum.cpu.pc;
+                if (rdva !== null) {
+                    goToRightDisasmAddress(rdva + delta);
+                }
+            }
+            return;
+        }
+
+        // Digit code to index mapping (works regardless of Shift)
+        const digitCode = e.code;
+        const digitMatch = digitCode && digitCode.match(/^Digit(\d)$/);
+        if (digitMatch) {
+            const digit = digitMatch[1];
+            const leftMap = { '1': 0, '2': 1, '3': 2, '4': 3, '5': 4 };
+            const rightMap = { '6': 0, '7': 1, '8': 2, '9': 3, '0': 4 };
+            const lpt = getLeftPanelType();
+            const rpt = getRightPanelType();
+            const leftBookmarks = getLeftBookmarks();
+            const rightBookmarks = getRightBookmarks();
+
+            if (!e.shiftKey) {
+                // Jump to bookmark
+                if (digit in leftMap && lpt !== 'calc') {
+                    e.preventDefault();
+                    const bm = leftBookmarks[leftMap[digit]];
+                    if (bm !== null) {
+                        const addr = typeof bm === 'object' ? bm.addr : bm;
+                        const type = typeof bm === 'object' ? bm.type : 'disasm';
+                        if (type !== lpt) switchLeftPanelType(type);
+                        if (lpt === 'disasm') goToAddress(addr);
+                        else goToLeftMemoryAddress(addr);
+                    }
+                    return;
+                }
+                if (digit in rightMap && rpt !== 'calc') {
+                    e.preventDefault();
+                    const bm = rightBookmarks[rightMap[digit]];
+                    if (bm !== null) {
+                        const addr = typeof bm === 'object' ? bm.addr : bm;
+                        const type = typeof bm === 'object' ? bm.type : 'memdump';
+                        if (type !== rpt) switchRightPanelType(type);
+                        if (rpt === 'memdump') goToMemoryAddress(addr);
+                        else goToRightDisasmAddress(addr);
+                    }
+                    return;
+                }
+            } else {
+                // Shift+digit: set bookmark at current address
+                if (digit in leftMap && lpt !== 'calc') {
+                    e.preventDefault();
+                    const idx = leftMap[digit];
+                    let addr, type = lpt;
+                    if (type === 'disasm') {
+                        const dva = getDisasmViewAddress();
+                        addr = dva !== null ? dva : (spectrum.cpu ? spectrum.cpu.pc : null);
+                    } else {
+                        addr = getLeftMemoryViewAddress();
+                    }
+                    if (addr !== null) {
+                        const oldBm = leftBookmarks[idx];
+                        leftBookmarks[idx] = { addr, type };
+                        const disasmBookmarksBar = document.getElementById('disasmBookmarks');
+                        updateBookmarkButtons(disasmBookmarksBar, leftBookmarks, 'left');
+                        undoManager.push({
+                            type: 'bookmark',
+                            description: oldBm !== null ? `Update left bookmark ${idx + 1}` : `Set left bookmark ${idx + 1}`,
+                            undo: () => { leftBookmarks[idx] = oldBm; updateBookmarkButtons(disasmBookmarksBar, leftBookmarks, 'left'); },
+                            redo: () => { leftBookmarks[idx] = { addr, type }; updateBookmarkButtons(disasmBookmarksBar, leftBookmarks, 'left'); }
+                        });
+                        showMessage(`Left bookmark ${idx + 1} set to ${hex16(addr)}`);
+                    }
+                    return;
+                }
+                if (digit in rightMap && rpt !== 'calc') {
+                    e.preventDefault();
+                    const idx = rightMap[digit];
+                    let addr, type = rpt;
+                    const memoryViewAddress = getMemoryViewAddress();
+                    if (type === 'memdump') {
+                        addr = memoryViewAddress;
+                    } else {
+                        const rdva = getRightDisasmViewAddress();
+                        addr = rdva !== null ? rdva : (spectrum.cpu ? spectrum.cpu.pc : null);
+                    }
+                    if (addr !== null) {
+                        const oldBm = rightBookmarks[idx];
+                        rightBookmarks[idx] = { addr, type };
+                        const memoryBookmarksBar = document.getElementById('memoryBookmarks');
+                        updateBookmarkButtons(memoryBookmarksBar, rightBookmarks, 'right');
+                        undoManager.push({
+                            type: 'bookmark',
+                            description: oldBm !== null ? `Update right bookmark ${idx + 1}` : `Set right bookmark ${idx + 1}`,
+                            undo: () => { rightBookmarks[idx] = oldBm; updateBookmarkButtons(memoryBookmarksBar, rightBookmarks, 'right'); },
+                            redo: () => { rightBookmarks[idx] = { addr, type }; updateBookmarkButtons(memoryBookmarksBar, rightBookmarks, 'right'); }
+                        });
+                        showMessage(`Right bookmark ${idx + 1} set to ${hex16(addr)}`);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    // F1 - Cycle zoom (x1 -> x2 -> x3 -> x1)
+    if (e.key === 'F1') {
+        e.preventDefault();
+        const cz = getCurrentZoom();
+        const nextZoom = cz >= 3 ? 1 : cz + 1;
+        setZoom(nextZoom, spectrum);
+        showMessage(`Zoom x${nextZoom}`);
+        return;
+    }
+
+    // F10 - Cycle overlay mode
+    if (e.key === 'F10') {
+        e.preventDefault();
+        const overlaySelect = document.getElementById('overlayMode');
+        const modes = ['normal', 'grid', 'box', 'screen', 'reveal', 'beam', 'beamscreen', 'noattr', 'nobitmap'];
+        const curIdx = modes.indexOf(overlaySelect.value);
+        const nextIdx = (curIdx + 1) % modes.length;
+        overlaySelect.value = modes[nextIdx];
+        spectrum.setOverlayMode(modes[nextIdx]);
+        spectrum.redraw();
+        showMessage(`Overlay: ${overlaySelect.options[overlaySelect.selectedIndex].text}`);
         return;
     }
 

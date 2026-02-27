@@ -13,6 +13,8 @@ const indexRegisters  = document.getElementById('indexRegisters');
 const flagsDisplay    = document.getElementById('flagsDisplay');
 const statusRegisters = document.getElementById('statusRegisters');
 const stackView       = document.getElementById('stackView');
+const regRItem        = document.getElementById('regRItem');
+const callStackView   = document.getElementById('callStackView');
 const pagesGroup      = document.getElementById('pagesGroup');
 const pagesInfo       = document.getElementById('pagesInfo');
 const disassemblyView = document.getElementById('disassemblyView');
@@ -337,12 +339,27 @@ export function updateDebugger() {
         `<button class="reg-swap-btn" id="btnEXA" title="EX AF,AF'">exa</button>` +
         `<button class="reg-swap-btn" id="btnEXX" title="EXX">exx</button>`;
 
+    // Index registers: SP, PC, I, IM, IFF
     indexRegisters.innerHTML =
         createRegisterItem('SP', hex16(regSP), canEdit ? 'sp' : null) +
         createRegisterItem('PC', hex16(regPC), canEdit ? 'pc' : null) +
-        createRegisterItem('T-st', regTstates.toString(), canEdit ? 'tstates' : null, 17);
+        createRegisterItem('I', hex8(regI), canEdit ? 'i' : null, 8) +
+        createRegisterItem('IM', regIM.toString(), canEdit ? 'im' : null, 2) +
+        createRegisterItem('IFF', (regIFF1 ? '1' : '0') + '/' + (regIFF2 ? '1' : '0'), canEdit ? 'iff' : null, 2);
 
-    // Flags
+    // Timing registers: T-st, delta-T
+    const bpT = spectrum.breakpointTStates;
+    const bpTStr = bpT > 0 ? bpT.toLocaleString() : '0';
+    statusRegisters.innerHTML =
+        createRegisterItem('T-st', regTstates.toString(), canEdit ? 'tstates' : null, 17) +
+        createRegisterItem('\u0394T', bpTStr, null, 0);
+
+    // R register (on flags row)
+    const rEditClass = canEdit ? ' editable' : '';
+    const rDataAttr = canEdit ? ' data-reg="r" data-bits="8"' : '';
+    regRItem.innerHTML = `<span class="register-name">R</span><br><span class="register-value${rEditClass}"${rDataAttr}>${hex8(regR)}</span>`;
+
+    // Flags (clickable to toggle when not viewing trace)
     const f = regAF & 0xFF;
     const flags = [
         { name: 'S', bit: 0x80, desc: 'Sign' },
@@ -357,13 +374,6 @@ export function updateDebugger() {
     flagsDisplay.innerHTML = flags.map(flag =>
         `<div class="flag-item ${(f & flag.bit) ? 'set' : ''}${canEdit ? ' editable' : ''}" title="${flag.desc} (click to toggle)" data-bit="${flag.bit}">${flag.name}</div>`
     ).join('');
-
-    // Status registers
-    statusRegisters.innerHTML =
-        createRegisterItem('I', hex8(regI), canEdit ? 'i' : null, 8) +
-        createRegisterItem('R', hex8(regR), canEdit ? 'r' : null, 8) +
-        createRegisterItem('IM', regIM.toString(), canEdit ? 'im' : null, 2) +
-        createRegisterItem('IFF', (regIFF1 ? '1' : '0') + '/' + (regIFF2 ? '1' : '0'), canEdit ? 'iff' : null, 2);
 
     // Paging info (128K/Pentagon only)
     if (spectrum.memory.machineType !== '48k') {
@@ -629,6 +639,7 @@ export function updateDebugger() {
 
     // Update stack view
     updateStackView();
+    updateCallStack();
 
     // Update trace status
     if (typeof window.updateTraceStatus === 'function') {
@@ -688,6 +699,55 @@ export function updateStackView() {
     previousSP = sp;
 }
 
+// ── Call stack view ──────────────────────────────────────────────────
+
+export function updateCallStack() {
+    if (!spectrum.cpu || !spectrum.romLoaded) {
+        callStackView.innerHTML = '';
+        return;
+    }
+
+    const stack = spectrum._debugCallStack;
+    if (!stack) {
+        callStackView.innerHTML = '';
+        return;
+    }
+    let html = '';
+
+    // Show call stack from deepest (most recent) to shallowest
+    for (let i = stack.length - 1; i >= 0; i--) {
+        const entry = stack[i];
+        const addr = entry.addr;
+        const label = labelManager.get(addr);
+        const labelStr = label ? ` <span class="call-label">${label.name}</span>` : '';
+        const intMark = entry.isInt ? ' <span class="call-label">INT</span>' : '';
+        const cls = i === stack.length - 1 ? 'stack-entry current' : 'stack-entry';
+        html += `<div class="${cls}" data-value="${addr}">` +
+                `<span class="stack-value">${hex16(addr)}</span>${intMark}${labelStr}</div>`;
+    }
+
+    if (!html) {
+        html = '<div class="stack-entry" style="opacity:0.4">\u2014</div>';
+    }
+
+    callStackView.innerHTML = html;
+}
+
+// Smart navigation: prefer disasm panel, fall back to memory view
+export function navigateToAddress(addr) {
+    if (leftPanelType === 'disasm') {
+        goToLeftDisasm(addr);
+    } else if (rightPanelType === 'disasm') {
+        goToRightDisasm(addr);
+    } else if (leftPanelType === 'memdump') {
+        goToLeftMemory(addr);
+    } else if (rightPanelType === 'memdump') {
+        goToRightMemory(addr);
+    } else {
+        goToLeftDisasm(addr);
+    }
+}
+
 // ── Trigger / breakpoint / watchpoint / label lists ─────────────────
 
 export function updateTriggerList() {
@@ -720,6 +780,10 @@ export function updateLabelsList() {
     const filter = labelFilterInput.value.toLowerCase().trim();
 
     const userLabels = labelManager.getAll().map(l => ({ ...l, isRom: false }));
+
+    // Update label count display
+    const labelCountEl = document.getElementById('labelCount');
+    if (labelCountEl) labelCountEl.textContent = userLabels.length > 0 ? `labels: ${userLabels.length}` : '';
 
     let romLabels = [];
     if (labelManager.showRomLabels) {
@@ -1208,82 +1272,6 @@ export function updateMemSelection() {
     });
 }
 
-// ── Panel type switching ────────────────────────────────────────────
-
-export function switchLeftPanelType(type) {
-    leftPanelType = type;
-    leftPanelTypeSelect.value = type;
-
-    const disasmControls = document.querySelector('.left-disasm-controls');
-    const memdumpControls = document.querySelector('.left-memdump-controls');
-    const disasmView = document.getElementById('disassemblyView');
-    const leftStepControls = document.querySelector('.left-debugger-controls');
-    const leftSearch = document.querySelector('.left-memory-search');
-
-    if (type === 'disasm') {
-        disasmControls.style.display = '';
-        memdumpControls.style.display = 'none';
-        disasmView.style.display = '';
-        leftMemoryView.style.display = 'none';
-        if (leftStepControls) leftStepControls.style.display = '';
-        if (leftSearch) leftSearch.style.display = 'none';
-    } else {
-        disasmControls.style.display = 'none';
-        memdumpControls.style.display = '';
-        disasmView.style.display = 'none';
-        leftMemoryView.style.display = '';
-        if (leftStepControls) leftStepControls.style.display = 'none';
-        if (leftSearch) leftSearch.style.display = '';
-    }
-
-    updateLeftPanel();
-    updateBookmarkButtons(disasmBookmarksBar, leftBookmarks, 'left');
-}
-
-export function switchRightPanelType(type) {
-    rightPanelType = type;
-    rightPanelTypeSelect.value = type;
-
-    const memdumpControls = document.querySelector('.right-memdump-controls');
-    const disasmControls = document.querySelector('.right-disasm-controls');
-    const memView = document.getElementById('memoryView');
-    const rightSearch = document.querySelector('.right-memory-search');
-    const rightStepControls = document.querySelector('.right-debugger-controls');
-    const calcView = document.getElementById('rightCalculatorView');
-    const bookmarksBar = document.getElementById('memoryBookmarks');
-
-    memView.style.display = 'none';
-    rightDisassemblyView.style.display = 'none';
-    calcView.style.display = 'none';
-    memdumpControls.style.display = 'none';
-    disasmControls.style.display = 'none';
-    if (rightSearch) rightSearch.style.display = 'none';
-    if (rightStepControls) rightStepControls.style.display = 'none';
-
-    if (type === 'memdump') {
-        memdumpControls.style.display = '';
-        memView.style.display = '';
-        if (rightSearch) rightSearch.style.display = '';
-        if (bookmarksBar) bookmarksBar.style.display = '';
-    } else if (type === 'disasm') {
-        disasmControls.style.display = '';
-        rightDisassemblyView.style.display = '';
-        if (rightStepControls) rightStepControls.style.display = '';
-        if (bookmarksBar) bookmarksBar.style.display = '';
-        if (rightDisasmViewAddress === null && spectrum.cpu) {
-            rightDisasmViewAddress = spectrum.cpu.pc;
-            rightDisasmAddressInput.value = hex16(rightDisasmViewAddress);
-        }
-    } else if (type === 'calc') {
-        calcView.style.display = '';
-        if (bookmarksBar) bookmarksBar.style.display = 'none';
-    }
-
-    updateRightPanel();
-    if (type !== 'calc') {
-        updateBookmarkButtons(memoryBookmarksBar, rightBookmarks, 'right');
-    }
-}
 
 export function updateLeftPanel() {
     if (leftPanelType === 'disasm') {
@@ -1334,6 +1322,69 @@ function closeLeftMemContextMenu() {
 // ── Event listeners (wired up in init) ──────────────────────────────
 
 function _initEventListeners() {
+    // Stack view click — navigate to the value stored at that stack address
+    stackView.addEventListener('click', (e) => {
+        const entry = e.target.closest('.stack-entry');
+        if (!entry) return;
+        const value = parseInt(entry.dataset.value, 10);
+        if (!isNaN(value)) {
+            navigateToAddress(value);
+        }
+    });
+
+    // Call stack click — navigate to address
+    callStackView.addEventListener('click', (e) => {
+        const entry = e.target.closest('.stack-entry');
+        if (!entry) return;
+        const value = parseInt(entry.dataset.value, 10);
+        if (!isNaN(value)) {
+            navigateToAddress(value);
+        }
+    });
+
+    // Call stack context menu
+    callStackView.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const entry = e.target.closest('.stack-entry');
+        if (!entry) return;
+        const value = parseInt(entry.dataset.value, 10);
+        if (isNaN(value)) return;
+
+        if (stackContextMenu) stackContextMenu.remove();
+        stackContextMenu = document.createElement('div');
+        stackContextMenu.className = 'stack-context-menu';
+        stackContextMenu.innerHTML = `
+            <div data-action="disasm-left">Disasm left \u2192 ${hex16(value)}</div>
+            <div data-action="disasm-right">Disasm right \u2192 ${hex16(value)}</div>
+            <div data-action="memory-left">Memory left \u2192 ${hex16(value)}</div>
+            <div data-action="memory-right">Memory right \u2192 ${hex16(value)}</div>
+        `;
+        stackContextMenu.style.left = e.clientX + 'px';
+        stackContextMenu.style.top = e.clientY + 'px';
+        document.body.appendChild(stackContextMenu);
+
+        stackContextMenu.addEventListener('click', (ev) => {
+            const action = ev.target.dataset.action;
+            if (action === 'disasm-left') {
+                disasmViewAddress = value;
+                updateDebugger();
+            } else if (action === 'disasm-right') {
+                if (typeof rightDisasmViewAddress !== 'undefined') {
+                    rightDisasmViewAddress = value;
+                    updateRightDisassemblyView();
+                }
+            } else if (action === 'memory-left') {
+                goToMemoryAddress(value);
+            } else if (action === 'memory-right') {
+                if (typeof goToRightMemoryAddress === 'function') {
+                    goToRightMemoryAddress(value);
+                }
+            }
+            stackContextMenu.remove();
+            stackContextMenu = null;
+        });
+    });
+
     // Stack view context menu
     stackView.addEventListener('contextmenu', (e) => {
         e.preventDefault();

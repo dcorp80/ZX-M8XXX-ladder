@@ -32,6 +32,11 @@ export function saveProject(spectrum, deps) {
         openTabs, fileModified, VFS
     } = deps;
 
+    // CFA elements accessed directly by DOM ID (not always passed via deps)
+    const chkCfaSkipRom = document.getElementById('chkCfaSkipRom');
+    const chkCfaISR = document.getElementById('chkCfaISR');
+    const cfaExtraEntries = document.getElementById('cfaExtraEntries');
+
     try {
         // Get emulator snapshot as base64
         const snapshotData = spectrum.saveSnapshot();
@@ -85,6 +90,7 @@ export function saveProject(spectrum, deps) {
                 gamepadMapping: spectrum.gamepadMapping,
                 kempstonMouse: document.getElementById('chkKempstonMouse').checked,
                 mouseWheel: document.getElementById('chkMouseWheel').checked,
+                mouseSwap: document.getElementById('chkMouseSwap').checked,
                 borderPreset: borderSizeSelect.value,
                 invertDisplay: chkInvertDisplay.checked,
                 lateTimings: chkLateTimings.checked,
@@ -100,7 +106,10 @@ export function saveProject(spectrum, deps) {
                 fullscreenMode: fullscreenMode.value,
                 tapeFlashLoad: spectrum.getTapeFlashLoad(),
                 tapeAudioEnabled: spectrum.tapeAudioEnabled,
-                autoLoad: chkAutoLoad.checked
+                autoLoad: chkAutoLoad.checked,
+                cfaSkipRom: chkCfaSkipRom.checked,
+                cfaISR: chkCfaISR.checked,
+                cfaEntries: cfaExtraEntries.value
             },
             // CPU timing state (not stored in SNA format)
             cpuTiming: {
@@ -243,6 +252,11 @@ export async function loadProject(jsonStr, spectrum, deps) {
         getMachineProfile, chkAutoLoad, loadedPalettes,
         updateGamepadStatus, updateMouseStatus
     } = deps;
+
+    // CFA elements accessed directly by DOM ID
+    const chkCfaSkipRom = document.getElementById('chkCfaSkipRom');
+    const chkCfaISR = document.getElementById('chkCfaISR');
+    const cfaExtraEntries = document.getElementById('cfaExtraEntries');
 
     try {
         const project = JSON.parse(jsonStr);
@@ -467,6 +481,13 @@ export async function loadProject(jsonStr, spectrum, deps) {
                     spectrum.kempstonMouseWheelEnabled = project.settings.mouseWheel;
                 }
             }
+            if (project.settings.mouseSwap !== undefined) {
+                const swapChk = document.getElementById('chkMouseSwap');
+                if (swapChk) {
+                    swapChk.checked = project.settings.mouseSwap;
+                    spectrum.kempstonMouseSwapButtons = project.settings.mouseSwap;
+                }
+            }
             if (project.settings.speed !== undefined) {
                 speedSelect.value = project.settings.speed;
                 spectrum.setSpeed(project.settings.speed);
@@ -485,6 +506,8 @@ export async function loadProject(jsonStr, spectrum, deps) {
             if (project.settings.darkTheme !== undefined) {
                 deps.darkTheme = project.settings.darkTheme;
                 document.body.classList.toggle('light-theme', !deps.darkTheme);
+                const metaColorScheme = document.getElementById('metaColorScheme');
+                if (metaColorScheme) metaColorScheme.content = deps.darkTheme ? 'dark' : 'light';
                 const themeToggle = document.getElementById('themeToggle');
                 themeToggle.textContent = deps.darkTheme ? '\u2600\uFE0F' : '\uD83C\uDF19';
             }
@@ -545,6 +568,9 @@ export async function loadProject(jsonStr, spectrum, deps) {
             if (project.settings.autoLoad !== undefined) {
                 document.getElementById('chkAutoLoad').checked = project.settings.autoLoad;
             }
+            if (project.settings.cfaSkipRom !== undefined) chkCfaSkipRom.checked = project.settings.cfaSkipRom;
+            if (project.settings.cfaISR !== undefined) chkCfaISR.checked = project.settings.cfaISR;
+            if (project.settings.cfaEntries !== undefined) cfaExtraEntries.value = project.settings.cfaEntries;
         }
 
         // Restore CPU timing state
