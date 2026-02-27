@@ -14,6 +14,7 @@ let hex8 = null;
 let hex16 = null;
 let downloadFile = null;
 let updateDebugger = null;
+let updateLabelsList = null;
 let goToAddress = null;
 let labelManager = null;
 let regionManager = null;
@@ -1028,6 +1029,7 @@ let assembledOrg = 0;
 let assembledOrgAddresses = [];  // All ORG addresses from assembly
 let assembledSaveCommands = [];  // SAVESNA/SAVETAP commands from assembly
 let assembledEntryPoint = null;  // Entry point from ; @entry marker
+let assembledSymbols = [];       // Symbols from last assembly {name, value, type}
 export function goToFileLine(file, line) {
     // Normalize file path
     const normalizedFile = file ? file.replace(/\\/g, '/').toLowerCase() : null;
@@ -1240,6 +1242,7 @@ export function doAssemble() {
         assembledOrg = result.outputStart;
         assembledOrgAddresses = result.orgAddresses || [result.outputStart];
         assembledSaveCommands = result.saveCommands || [];
+        assembledSymbols = result.symbols || [];
 
         // Parse ; @entry marker from source
         assembledEntryPoint = null;
@@ -3418,6 +3421,7 @@ export function initAssemblerTab(deps) {
     hex16 = deps.hex16;
     downloadFile = deps.downloadFile;
     updateDebugger = deps.updateDebugger;
+    updateLabelsList = deps.updateLabelsList;
     goToAddress = deps.goToAddress;
     labelManager = deps.labelManager;
     regionManager = deps.regionManager;
@@ -4193,6 +4197,25 @@ export function initAssemblerTab(deps) {
 
             spectrum.cpu.pc = entryPoint;
 
+            // Inject assembler symbols as debugger labels
+            if (assembledSymbols.length > 0) {
+                let injected = 0;
+                for (const sym of assembledSymbols) {
+                    const addr = sym.value & 0xFFFF;
+                    // Skip symbols outside addressable range or internal
+                    if (sym.value < 0 || sym.value > 0xFFFF) continue;
+                    if (sym.name.startsWith('__')) continue;
+                    // Only add if no existing user label at this address
+                    if (!labelManager.get(addr)) {
+                        labelManager.add({ address: addr, name: sym.name });
+                        injected++;
+                    }
+                }
+                if (injected > 0) {
+                    updateLabelsList();
+                }
+            }
+
             // Switch to debugger tab
             const debuggerTab = document.querySelector('.tab-btn[data-tab="debugger"]');
             if (debuggerTab) {
@@ -4515,9 +4538,14 @@ export function initAssemblerTab(deps) {
         }
 
         let html = '';
+        const includeAlt = chkTraceAlt.checked;
+        const includeSys = chkTraceSys.checked;
+        let prev = null;
+
         for (let i = 0; i < entries.length; i++) {
             const entry = entries[i];
             const globalIdx = startIdx + i;
+            const isFirst = (i === 0);
             const isViewing = currentPos === globalIdx;
             const isCurrent = currentPos === -1 && i === entries.length - 1;
 
@@ -4525,7 +4553,7 @@ export function initAssemblerTab(deps) {
             let instrText = '';
             if (disasm) {
                 const instr = disasm.disassemble(entry.pc);
-                instrText = instr.text;
+                instrText = instr.mnemonic;
             } else {
                 instrText = entry.bytes.slice(0, 3).map(b => hex8(b)).join(' ');
             }
@@ -4551,12 +4579,35 @@ export function initAssemblerTab(deps) {
                 memHtml = `<span class="memops">${memStrs.join(' ')}${suffix}</span>`;
             }
 
+            // Build register string — only show registers that changed
+            const regParts = [];
+            if (isFirst || !prev || entry.af !== prev.af) regParts.push(`AF=${hex16(entry.af)}`);
+            if (isFirst || !prev || entry.bc !== prev.bc) regParts.push(`BC=${hex16(entry.bc)}`);
+            if (isFirst || !prev || entry.de !== prev.de) regParts.push(`DE=${hex16(entry.de)}`);
+            if (isFirst || !prev || entry.hl !== prev.hl) regParts.push(`HL=${hex16(entry.hl)}`);
+            if (isFirst || !prev || entry.sp !== prev.sp) regParts.push(`SP=${hex16(entry.sp)}`);
+            if (isFirst || !prev || entry.ix !== prev.ix) regParts.push(`IX=${hex16(entry.ix)}`);
+            if (isFirst || !prev || entry.iy !== prev.iy) regParts.push(`IY=${hex16(entry.iy)}`);
+            if (includeAlt) {
+                if (isFirst || !prev || entry.af_ !== prev.af_) regParts.push(`AF'=${hex16(entry.af_)}`);
+                if (isFirst || !prev || entry.bc_ !== prev.bc_) regParts.push(`BC'=${hex16(entry.bc_)}`);
+                if (isFirst || !prev || entry.de_ !== prev.de_) regParts.push(`DE'=${hex16(entry.de_)}`);
+                if (isFirst || !prev || entry.hl_ !== prev.hl_) regParts.push(`HL'=${hex16(entry.hl_)}`);
+            }
+            if (includeSys) {
+                if (isFirst || !prev || entry.i !== prev.i) regParts.push(`I=${hex8(entry.i)}`);
+                if (isFirst || !prev || entry.r !== prev.r) regParts.push(`R=${hex8(entry.r)}`);
+                if (isFirst || !prev || entry.im !== prev.im) regParts.push(`IM=${entry.im}`);
+            }
+            const regsHtml = regParts.length > 0 ? `<span class="regs">${regParts.join(' ')}</span>` : '';
+
             html += `<div class="${classes.join(' ')}" data-idx="${globalIdx}">` +
                 `<span class="addr">${hex16(entry.pc)}</span>` +
                 `<span class="instr">${instrText}</span>` +
-                `<span class="regs">AF=${hex16(entry.af)} BC=${hex16(entry.bc)} HL=${hex16(entry.hl)}</span>` +
-                portsHtml + memHtml +
+                regsHtml + portsHtml + memHtml +
                 `</div>`;
+
+            prev = entry;
         }
         traceList.innerHTML = html;
 
@@ -4583,6 +4634,9 @@ export function initAssemblerTab(deps) {
             showMessage('Step trace disabled');
         }
     });
+
+    chkTraceAlt.addEventListener('change', () => { updateTraceList(); });
+    chkTraceSys.addEventListener('change', () => { updateTraceList(); });
 
     chkTraceRuntime.addEventListener('change', () => {
         spectrum.runtimeTraceEnabled = chkTraceRuntime.checked;
@@ -4945,6 +4999,131 @@ export function initAssemblerTab(deps) {
         const msg = `Applied ${added} regions` + (skipped ? `, skipped ${skipped} overlapping` : '') + (subsDetected ? `, ${subsDetected} subroutines` : '');
         showMessage(msg);
     });
+
+    // Code-flow analysis handlers
+    const btnCfaRun = document.getElementById('btnCfaRun');
+    const btnCfaClear = document.getElementById('btnCfaClear');
+    const chkCfaISR = document.getElementById('chkCfaISR');
+    const chkCfaSkipRom = document.getElementById('chkCfaSkipRom');
+    const cfaExtraEntries = document.getElementById('cfaExtraEntries');
+    const cfaStatus = document.getElementById('cfaStatus');
+
+    if (btnCfaRun) {
+        btnCfaRun.addEventListener('click', async () => {
+            // Collect entry points
+            const entries = new Set();
+
+            // Current PC
+            entries.add(spectrum.cpu.pc & 0xFFFF);
+
+            // ISR handler at $0038
+            if (chkCfaISR.checked) {
+                entries.add(0x0038);
+            }
+
+            // All existing subroutine entries
+            const subs = subroutineManager.getAll();
+            for (const sub of subs) {
+                entries.add(sub.address & 0xFFFF);
+            }
+
+            // Extra entry points from text input
+            const extraText = cfaExtraEntries.value.trim();
+            if (extraText) {
+                for (const part of extraText.split(',')) {
+                    const addr = parseInt(part.trim(), 16);
+                    if (!isNaN(addr)) {
+                        entries.add(addr & 0xFFFF);
+                    }
+                }
+            }
+
+            // All label addresses
+            const labels = labelManager.getAll();
+            for (const lbl of labels) {
+                entries.add(lbl.address & 0xFFFF);
+            }
+
+            const skipRom = chkCfaSkipRom.checked;
+
+            // Build isDataRegion callback
+            const isDataRegion = addr => regionManager.isData(addr);
+
+            // Disable button, show progress
+            btnCfaRun.disabled = true;
+            cfaStatus.textContent = 'Analyzing...';
+
+            try {
+                const result = await spectrum.analyzeCodeFlow({
+                    entryPoints: Array.from(entries),
+                    skipRom: skipRom,
+                    isDataRegion: isDataRegion,
+                    onProgress: (processed, queued) => {
+                        cfaStatus.textContent = `Analyzing... ${processed} instructions, ${queued} queued`;
+                    },
+                    maxInstructions: 100000
+                });
+
+                // Convert codeAddresses to sorted array and merge consecutive into regions
+                const sortedAddrs = Array.from(result.codeAddresses).sort((a, b) => a - b);
+                const regions = [];
+                let i = 0;
+                while (i < sortedAddrs.length) {
+                    const start = sortedAddrs[i];
+                    let end = start;
+                    while (i + 1 < sortedAddrs.length && sortedAddrs[i + 1] === end + 1) {
+                        i++;
+                        end = sortedAddrs[i];
+                    }
+                    regions.push({ start: start, end: end, type: REGION_TYPES.CODE });
+                    i++;
+                }
+
+                // Apply regions (skip overlaps)
+                let cfaAdded = 0, cfaSkipped = 0;
+                for (const region of regions) {
+                    const res = regionManager.add(region);
+                    if (res.error) cfaSkipped++; else cfaAdded++;
+                }
+
+                // Add subroutine entries
+                let subsAdded = 0;
+                for (const target of result.callTargets) {
+                    subroutineManager.add(target, null, null, true);
+                    subsAdded++;
+                }
+
+                // Add xrefs
+                for (const xref of result.xrefs) {
+                    xrefManager.add(xref.target, xref.from, xref.type);
+                }
+
+                updateDebugger();
+
+                // Log warnings
+                for (const w of result.warnings) {
+                    console.warn('[CFA]', w);
+                }
+
+                const cfaMsg = `Flow: ${cfaAdded} regions, ${subsAdded} subs, ${result.xrefs.length} xrefs` +
+                    (cfaSkipped ? `, ${cfaSkipped} overlaps skipped` : '') +
+                    (result.indirectJumps.length ? `, ${result.indirectJumps.length} indirect jumps` : '');
+                cfaStatus.textContent = cfaMsg;
+                showMessage(cfaMsg);
+            } catch (err) {
+                cfaStatus.textContent = 'Error: ' + err.message;
+                console.error('[CFA]', err);
+            } finally {
+                btnCfaRun.disabled = false;
+            }
+        });
+    }
+
+    if (btnCfaClear) {
+        btnCfaClear.addEventListener('click', () => {
+            cfaStatus.textContent = '';
+        });
+    }
 
     // Update auto-map stats periodically
     setInterval(updateAutoMapStats, 1000);
