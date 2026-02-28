@@ -4547,7 +4547,7 @@ export function initExplorerTab(deps) {
         const addrSpan = e.target.closest('.explorer-basic-addr');
         if (!addrSpan) return;
 
-        const addr = parseInt(addrSpan.dataset.addr);
+        let addr = parseInt(addrSpan.dataset.addr);
         if (isNaN(addr)) return;
 
         // Switch to Disasm sub-tab

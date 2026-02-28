@@ -414,6 +414,11 @@ initULAplusPaletteGrid();
 
 applyOpcodeFilters();
 
+document.getElementById('opcodeSearch').addEventListener('input', applyOpcodeFilters);
+document.getElementById('opcodeGroup').addEventListener('change', applyOpcodeFilters);
+document.getElementById('opcodeCycles').addEventListener('change', applyOpcodeFilters);
+document.getElementById('opcodeSort').addEventListener('change', applyOpcodeFilters);
+
 // ═════════════════════════════════════════════════════════════════════
 // 9. Initialize view modules
 // ═════════════════════════════════════════════════════════════════════
@@ -649,6 +654,13 @@ const testRunner = new TestRunner(spectrum, {
     resetDisasm: () => { disasm = null; }
 });
 setState({ testRunner });
+
+// Open ROM dialog from Settings panel
+document.getElementById('btnSettingsLoadRoms').addEventListener('click', () => {
+    updateRomStatus();
+    document.getElementById('btnCloseRomModal').classList.remove('hidden');
+    document.getElementById('romModal').classList.remove('hidden');
+});
 
 // Initialize ROM modal event handlers
 initRomModalHandlers({
@@ -1656,6 +1668,26 @@ if (chkInvertDisplay) {
     });
 }
 
+// Theme toggle
+const themeToggle = document.getElementById('themeToggle');
+let darkTheme = localStorage.getItem('zx-theme') !== 'light';
+document.body.classList.toggle('light-theme', !darkTheme);
+themeToggle.textContent = darkTheme ? '☀️' : '🌙';
+
+themeToggle.addEventListener('click', () => {
+    darkTheme = !darkTheme;
+    document.body.classList.toggle('light-theme', !darkTheme);
+    themeToggle.textContent = darkTheme ? '☀️' : '🌙';
+    localStorage.setItem('zx-theme', darkTheme ? 'dark' : 'light');
+});
+
+// Overlay display mode
+const overlaySelect = document.getElementById('overlaySelect');
+overlaySelect.addEventListener('change', () => {
+    spectrum.setOverlayMode(overlaySelect.value);
+    spectrum.redraw();
+});
+
 // Late timings checkbox (default: false - early ULA behavior)
 const chkLateTimings = document.getElementById('chkLateTimings');
 if (chkLateTimings) {
@@ -1918,7 +1950,7 @@ document.addEventListener('keydown', (e) => {
     // F10 - Cycle overlay mode
     if (e.key === 'F10') {
         e.preventDefault();
-        const overlaySelect = document.getElementById('overlayMode');
+        const overlaySelect = document.getElementById('overlaySelect');
         const modes = ['normal', 'grid', 'box', 'screen', 'reveal', 'beam', 'beamscreen', 'noattr', 'nobitmap'];
         const curIdx = modes.indexOf(overlaySelect.value);
         const nextIdx = (curIdx + 1) % modes.length;
