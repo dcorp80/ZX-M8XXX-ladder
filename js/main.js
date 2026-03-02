@@ -79,6 +79,7 @@ import {
     getLeftMemoryViewAddress, getMemoryViewAddress,
     getDisasm,
     updateRightDisassemblyView,
+    updateMemoryView,
     DISASM_LINES,
     disassembleWithRegions
 } from './views/debugger-display.js';
@@ -468,6 +469,8 @@ initDebuggerDisplay({
     showRegionDialog,
     updateWatchValues: () => updateWatchValues(),
     getExportBaseName,
+    switchLeftPanelType,
+    switchRightPanelType,
     disasm
 });
 
@@ -494,6 +497,9 @@ initDebuggerDialogs({
     disassemblyView,
     rightDisassemblyView
 });
+
+// XRef tooltips (before panel manager, which needs the tooltip functions)
+const { showXRefTooltip, hideXRefTooltip } = initXRefTooltips(disassemblyView, xrefManager, labelManager);
 
 // Panel manager (dual-panel memory/disasm)
 initPanelManager({
@@ -529,7 +535,12 @@ initPanelManager({
     foldManager,
     commentManager,
     operandFormatManager,
-    REGION_TYPES
+    REGION_TYPES,
+    xrefManager,
+    showXRefTooltip,
+    hideXRefTooltip,
+    labelDisplayMode,
+    updateMemoryView
 });
 
 // Compare tool
@@ -664,9 +675,6 @@ initTextScanner({
     goToMemoryAddress,
     updateDebugger
 });
-
-// XRef tooltips
-initXRefTooltips(disassemblyView, xrefManager, labelManager);
 
 // Calculator
 calcUpdateDisplay();
@@ -1074,7 +1082,9 @@ ixiyRegisters.addEventListener('click', (e) => {
 
 btnRun.addEventListener('click', () => {
     if (!spectrum.romLoaded) { document.getElementById('romModal').classList.remove('hidden'); return; }
+    const wasRunning = spectrum.isRunning();
     spectrum.toggle();
+    if (wasRunning) setDisasmViewAddress(null);  // Re-center on PC when pausing
     updateStatus();
 });
 
@@ -1087,6 +1097,7 @@ function doStepInto() {
     traceManager.goToLive();
     setTraceViewAddress(null);
     spectrum.stepInto();
+    setDisasmViewAddress(null);
     openDebuggerPanel();
     updateDebugger();
     updateStatus();
@@ -1098,6 +1109,7 @@ function doStepOver() {
     traceManager.goToLive();
     setTraceViewAddress(null);
     spectrum.stepOver();
+    setDisasmViewAddress(null);
     openDebuggerPanel();
     updateDebugger();
     updateStatus();
@@ -1115,7 +1127,7 @@ btnRunTo.addEventListener('click', () => {
     traceManager.goToLive(); setTraceViewAddress(null);
     const reached = spectrum.runToAddress(runToTarget);
     showMessage(reached ? `Reached ${hex16(runToTarget)}` : 'Target not reached (max cycles)', reached ? 'success' : 'error');
-    updateDebugger(); updateStatus();
+    setDisasmViewAddress(null); updateDebugger(); updateStatus();
 });
 
 btnRunToInt.addEventListener('click', () => {
@@ -1124,7 +1136,7 @@ btnRunToInt.addEventListener('click', () => {
     traceManager.goToLive(); setTraceViewAddress(null);
     const reached = spectrum.runToInterrupt();
     showMessage(reached ? 'Interrupt reached' : 'Interrupt not reached (max cycles)', reached ? 'success' : 'error');
-    updateDebugger(); updateStatus();
+    setDisasmViewAddress(null); updateDebugger(); updateStatus();
 });
 
 btnRunToRet.addEventListener('click', () => {
@@ -1133,7 +1145,7 @@ btnRunToRet.addEventListener('click', () => {
     traceManager.goToLive(); setTraceViewAddress(null);
     const reached = spectrum.runToRet();
     showMessage(reached ? `RET at ${hex16(spectrum.cpu.pc)}` : 'RET not reached (max cycles)', reached ? 'success' : 'error');
-    updateDebugger(); updateStatus();
+    setDisasmViewAddress(null); updateDebugger(); updateStatus();
 });
 
 btnRunTstates.addEventListener('click', () => {
@@ -1145,7 +1157,7 @@ btnRunTstates.addEventListener('click', () => {
     const executed = spectrum.runTstates(ts);
     if (chkAutoComment.checked) commentManager.set(spectrum.cpu.pc, { before: '--------------------' });
     showMessage(`Executed ${executed} T-states`);
-    updateDebugger(); updateStatus();
+    setDisasmViewAddress(null); updateDebugger(); updateStatus();
 });
 
 // Right panel duplicates
@@ -1156,7 +1168,7 @@ btnRightRunTo.addEventListener('click', () => {
     traceManager.goToLive(); setTraceViewAddress(null);
     const reached = spectrum.runTo(runTargetAddress);
     showMessage(reached ? `Reached ${hex16(runTargetAddress)}` : `Target ${hex16(runTargetAddress)} not reached (max cycles)`, reached ? 'success' : 'error');
-    updateDebugger(); updateStatus();
+    setDisasmViewAddress(null); updateDebugger(); updateStatus();
 });
 
 btnRightRunToInt.addEventListener('click', () => {
@@ -1165,7 +1177,7 @@ btnRightRunToInt.addEventListener('click', () => {
     traceManager.goToLive(); setTraceViewAddress(null);
     const reached = spectrum.runToInterrupt();
     showMessage(reached ? `Interrupt at ${hex16(spectrum.cpu.pc)}` : 'Interrupt not reached (max cycles)', reached ? 'success' : 'error');
-    updateDebugger(); updateStatus();
+    setDisasmViewAddress(null); updateDebugger(); updateStatus();
 });
 
 btnRightRunToRet.addEventListener('click', () => {
@@ -1174,7 +1186,7 @@ btnRightRunToRet.addEventListener('click', () => {
     traceManager.goToLive(); setTraceViewAddress(null);
     const reached = spectrum.runToRet();
     showMessage(reached ? `RET at ${hex16(spectrum.cpu.pc)}` : 'RET not reached (max cycles)', reached ? 'success' : 'error');
-    updateDebugger(); updateStatus();
+    setDisasmViewAddress(null); updateDebugger(); updateStatus();
 });
 
 btnRightRunTstates.addEventListener('click', () => {
@@ -1186,7 +1198,7 @@ btnRightRunTstates.addEventListener('click', () => {
     const executed = spectrum.runTstates(ts);
     if (chkAutoComment.checked) commentManager.set(spectrum.cpu.pc, { before: '--------------------' });
     showMessage(`Executed ${executed} T-states`);
-    updateDebugger(); updateStatus();
+    setDisasmViewAddress(null); updateDebugger(); updateStatus();
 });
 
 // ═════════════════════════════════════════════════════════════════════
@@ -2010,7 +2022,7 @@ document.addEventListener('keydown', (e) => {
     // F6 - Pause/Resume
     if (e.code === 'F6' || e.key === 'F6' || e.key === 'Pause') {
         e.preventDefault();
-        if (spectrum.romLoaded) { spectrum.toggle(); updateStatus(); showMessage(spectrum.isRunning() ? 'Resumed' : 'Paused'); }
+        if (spectrum.romLoaded) { const wasRunning = spectrum.isRunning(); spectrum.toggle(); if (wasRunning) setDisasmViewAddress(null); updateStatus(); showMessage(spectrum.isRunning() ? 'Resumed' : 'Paused'); }
         return;
     }
     // F7 - Step Into
@@ -2026,7 +2038,7 @@ document.addEventListener('keydown', (e) => {
         traceManager.goToLive(); setTraceViewAddress(null);
         const reached = spectrum.runToAddress(runToTarget);
         showMessage(reached ? `Reached ${hex16(runToTarget)}` : 'Target not reached', reached ? 'success' : 'error');
-        openDebuggerPanel(); updateDebugger(); updateStatus();
+        setDisasmViewAddress(null); openDebuggerPanel(); updateDebugger(); updateStatus();
         return;
     }
     // F9 - Toggle Breakpoint at PC

@@ -86,7 +86,7 @@ let showMessage;
 let updateBookmarkButtons;
 let showLabelDialog, showRegionDialog;
 let updateWatchValues;
-let switchLeftPanelType_fn, switchRightPanelType_fn;
+let switchLeftPanelType, switchRightPanelType;
 let getExportBaseName;
 
 // ── Public state accessors ──────────────────────────────────────────
@@ -162,6 +162,8 @@ export function initDebuggerDisplay(deps) {
     showRegionDialog   = deps.showRegionDialog;
     updateWatchValues  = deps.updateWatchValues;
     getExportBaseName  = deps.getExportBaseName;
+    switchLeftPanelType  = deps.switchLeftPanelType;
+    switchRightPanelType = deps.switchRightPanelType;
 
     // Set initial disasm if provided
     if (deps.disasm) disasm = deps.disasm;
