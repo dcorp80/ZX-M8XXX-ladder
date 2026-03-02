@@ -95,10 +95,12 @@ import {
     doSearch, doSearchNext
 } from './views/panel-manager.js';
 import { initCompareTool } from './views/compare-tool.js';
-import { initExplorerTab } from './views/explorer-tab.js';
+import {
+    initExplorerTab, buildTapeCatalog, buildDiskCatalog, updateTapePosition
+} from './views/explorer-tab.js';
 import { initGraphicsViewer, updateGraphicsViewer } from './views/graphics-viewer.js';
 import {
-    initAssemblerTab, showTraceEntry, formatMnemonic
+    initAssemblerTab, showTraceEntry, formatMnemonic, updateXrefStats
 } from './views/assembler-tab.js';
 import { initFrameExport } from './views/frame-export.js';
 import { initGameBrowser } from './views/game-browser.js';
@@ -140,8 +142,10 @@ import {
     getLoadedPalettes
 } from './app/display-sound.js';
 import {
-    updateBetaDiskStatus, updateDriveSelector, getSelectedDriveIndex,
-    updateMediaIndicator, handleDiskInserted, handleLoadResult,
+    updateBetaDiskStatus as _updateBetaDiskStatus,
+    updateDriveSelector as _updateDriveSelector,
+    getSelectedDriveIndex,
+    updateMediaIndicator as _updateMediaIndicator, handleDiskInserted, handleLoadResult,
     showZipSelection, quicksave, quickload,
     cancelAutoLoad, startAutoLoadTape, startAutoLoadDisk, startAutoLoadPlus3Disk,
     describeTapeBlock, getExportBaseName,
@@ -156,7 +160,7 @@ const leftNavHistory = [];
 const rightNavHistory = [];
 
 // Wire cross-module deps to break circular imports
-setRomManagerDeps({ updateBetaDiskStatus });
+setRomManagerDeps({ updateBetaDiskStatus: _updateBetaDiskStatus });
 
 // ═════════════════════════════════════════════════════════════════════
 // 1. Create manager instances
@@ -304,6 +308,11 @@ let spectrum = new Spectrum(canvas, {
     overlayCanvas: overlayCanvas
 });
 window.spectrum = spectrum;
+
+// Wrap media-io functions that take spectrum as a parameter
+const updateMediaIndicator = (name, type, driveIdx) => _updateMediaIndicator(name, type, driveIdx, spectrum);
+const updateBetaDiskStatus = () => _updateBetaDiskStatus(spectrum);
+const updateDriveSelector = () => _updateDriveSelector(spectrum);
 
 // Disassembler (created on first use or after machine type change)
 let disasm = null;
@@ -543,7 +552,8 @@ initExplorerTab({
     hex16,
     showMessage,
     updateDriveSelector,
-    updateMediaIndicator
+    updateMediaIndicator,
+    getSelectedDriveIndex
 });
 
 // Graphics viewer
@@ -681,7 +691,7 @@ const testRunner = new TestRunner(spectrum, {
     updateULAplusStatus: () => updateULAplusStatus(spectrum),
     applyPalette: (id) => applyPalette(id, spectrum),
     updateCanvasSize: () => updateCanvasSize(spectrum),
-    updateMediaIndicator: (name, type, driveIdx) => updateMediaIndicator(name, type, driveIdx, spectrum),
+    updateMediaIndicator,
     resetDisasm: () => { disasm = null; }
 });
 setState({ testRunner });
@@ -2035,43 +2045,89 @@ document.addEventListener('keydown', (e) => {
 // 26. File drop / file input
 // ═════════════════════════════════════════════════════════════════════
 
+const loadResultDeps = {
+    cancelAutoLoad: () => cancelAutoLoad(spectrum),
+    updateRZXStatus,
+    updateTapePosition, buildTapeCatalog, buildDiskCatalog,
+    updateMediaIndicator,
+    labelManager, regionManager, commentManager, xrefManager,
+    operandFormatManager, subroutineManager, updateXrefStats,
+    chkAutoLoad: document.getElementById('chkAutoLoad'),
+    startAutoLoadTape: (isTzx) => startAutoLoadTape(isTzx, spectrum, showMessage),
+    startAutoLoadDisk: () => startAutoLoadDisk(spectrum),
+    startAutoLoadPlus3Disk: () => startAutoLoadPlus3Disk(spectrum),
+    loadRomsForMachineType, openDebuggerPanel,
+    updateDebugger, updateStatus,
+    updateCanvasSize: () => updateCanvasSize(spectrum)
+};
+
+const zipSelectionDeps = {
+    handleLoadResultFn: (result, fileName) => handleLoadResult(result, fileName, spectrum, showMessage, loadResultDeps),
+    handleDiskInsertedFn: (result, fileName) => handleDiskInserted(result, fileName, spectrum, showMessage,
+        (r, fn) => handleLoadResult(r, fn, spectrum, showMessage, loadResultDeps)),
+    loadRomsForMachineType,
+    updateCanvasSize: () => updateCanvasSize(spectrum),
+    applyPalette: (id) => applyPalette(id, spectrum),
+    paletteSelect,
+    buildDiskCatalog
+};
+
+async function loadFileIntoEmulator(file) {
+    await initAudioOnUserGesture(spectrum);
+    try {
+        const driveIndex = getSelectedDriveIndex();
+        const result = await spectrum.loadFile(file, driveIndex);
+
+        // Update canvas sizes after loading (machine type change may affect dimensions)
+        updateCanvasSize(spectrum);
+
+        if (result.needsSelection) {
+            showZipSelection(result, file.name, spectrum, showMessage, zipSelectionDeps);
+        } else if (result.diskInserted) {
+            handleDiskInserted(result, file.name, spectrum, showMessage,
+                (r, fn) => handleLoadResult(r, fn, spectrum, showMessage, loadResultDeps));
+        } else {
+            handleLoadResult(result, file.name, spectrum, showMessage, loadResultDeps);
+        }
+    } catch (e) {
+        showMessage(e.message, 'error');
+    }
+}
+
 fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    await initAudioOnUserGesture(spectrum);
-    const data = await file.arrayBuffer();
-    handleLoadResult(data, file.name, {
-        spectrum, showMessage, updateDebugger, updateStatus,
-        machineSelect, updateCanvasSize: () => updateCanvasSize(spectrum),
-        applyRomsToEmulator, loadRomsForMachineType,
-        updateBetaDiskStatus, setupDiskActivityCallback,
-        applyPalette: (id) => applyPalette(id, spectrum),
-        updateULAplusStatus: () => updateULAplusStatus(spectrum),
-        updateGraphicsViewer, showZipSelection
-    });
+    await loadFileIntoEmulator(file);
     fileInput.value = '';
 });
 
-// Drag and drop
-dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', async (e) => {
+// Drag and drop (document-level, shows drop zone overlay)
+const romModal = document.getElementById('romModal');
+function isAssemblerTabActive() {
+    const btn = document.querySelector('.tab-btn[data-tab="assembler"]');
+    return btn && btn.classList.contains('active');
+}
+
+document.addEventListener('dragover', (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    dropZone.classList.remove('drag-over');
+    if (!romModal.classList.contains('hidden')) return;
+    if (isAssemblerTabActive()) return;
+    dropZone.classList.add('active');
+});
+
+document.addEventListener('dragleave', (e) => {
+    if (e.target === dropZone) dropZone.classList.remove('active');
+});
+
+document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('active');
+    if (!romModal.classList.contains('hidden')) return;
+    if (isAssemblerTabActive()) return;
+
     const file = e.dataTransfer.files[0];
     if (!file) return;
-    await initAudioOnUserGesture(spectrum);
-    const data = await file.arrayBuffer();
-    handleLoadResult(data, file.name, {
-        spectrum, showMessage, updateDebugger, updateStatus,
-        machineSelect, updateCanvasSize: () => updateCanvasSize(spectrum),
-        applyRomsToEmulator, loadRomsForMachineType,
-        updateBetaDiskStatus, setupDiskActivityCallback,
-        applyPalette: (id) => applyPalette(id, spectrum),
-        updateULAplusStatus: () => updateULAplusStatus(spectrum),
-        updateGraphicsViewer, showZipSelection
-    });
+    await loadFileIntoEmulator(file);
 });
 
 // ═════════════════════════════════════════════════════════════════════
