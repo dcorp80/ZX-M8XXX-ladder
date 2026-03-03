@@ -135,6 +135,7 @@ import {
     handleRegisterClick, initXRefTooltips
 } from './app/emulator-control.js';
 import { initInputHandler, updateMouseStatus, updateGamepadStatus } from './app/input-handler.js';
+import { initCanvasRenderer } from './app/canvas-renderer.js';
 import {
     initAudioOnUserGesture, toggleSound, updateSoundButtons,
     toggleFullscreen, applyFullscreenScale, restoreCanvasSize,
@@ -309,6 +310,11 @@ let spectrum = new Spectrum(canvas, {
     overlayCanvas: overlayCanvas
 });
 window.spectrum = spectrum;
+
+// Host-side canvas rendering (Phase 1: decouple canvas from kernel)
+const renderer = initCanvasRenderer(canvas, overlayCanvas, spectrum);
+spectrum.onRender = renderer.render;
+spectrum.onDisplayDimensionsChanged = renderer.resize;
 
 // Wrap media-io functions that take spectrum as a parameter
 const updateMediaIndicator = (name, type, driveIdx) => _updateMediaIndicator(name, type, driveIdx, spectrum);

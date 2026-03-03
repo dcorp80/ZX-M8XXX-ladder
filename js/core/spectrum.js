@@ -109,6 +109,8 @@ export class Spectrum {
         this.onRomLoaded = null;
         this.onError = null;
         this.onBreakpoint = null; // Called when breakpoint hit
+        this.onRender = null; // Called with frameBuffer when screen needs display
+        this.onDisplayDimensionsChanged = null; // Called when display dimensions change
         this.breakpointTStates = 0; // T-states accumulated since last breakpoint
         this._bpTStatesResetPending = false; // Deferred reset: stays visible until next action
         this._debugCallStack = []; // Runtime call stack: [{addr, caller}] tracked via SP changes
@@ -338,35 +340,13 @@ export class Spectrum {
         this.memory.onWrite = null;
         this.cpu.onFetch = null;
 
-        this.boundKeyDown = this.handleKeyDown.bind(this);
         this.pressedKeys = new Map(); // Track e.code → e.key for proper release
-        this.boundKeyUp = this.handleKeyUp.bind(this);
-        this.keyboardHandlersRegistered = false;
     }
 
     // ========== Initialization ==========
 
-    async init(romUrl) {
-        try {
-            if (romUrl) await this.loadRom(romUrl);
-            this.reset();
-            return true;
-        } catch (e) {
-            if (this.onError) this.onError(e);
-            return false;
-        }
-    }
-    
-    async loadRom(source, bank = 0) {
-        let data;
-        if (typeof source === 'string') {
-            const response = await fetch(source);
-            if (!response.ok) throw new Error(`Failed to load ROM: ${response.status}`);
-            data = await response.arrayBuffer();
-        } else {
-            data = source;
-        }
-        this.memory.loadRom(data, bank);
+    loadRom(source, bank = 0) {
+        this.memory.loadRom(source, bank);
         this.romLoaded = true;
         if (this.onRomLoaded) this.onRomLoaded();
     }
@@ -992,11 +972,9 @@ export class Spectrum {
 
     updateDisplayDimensions() {
         const dims = this.ula.getDimensions();
-        this.canvas.width = dims.width;
-        this.canvas.height = dims.height;
-        this.imageData = this.ctx.createImageData(dims.width, dims.height);
         // Store previous frame for beam visualization mode
         this.previousFrameBuffer = new Uint8ClampedArray(dims.width * dims.height * 4);
+        if (this.onDisplayDimensionsChanged) this.onDisplayDimensionsChanged();
     }
 
     // Save current frame as previous (call at end of each frame)
@@ -1649,9 +1627,7 @@ export class Spectrum {
                 }
                 const frameBuffer = this.ula.endFrame();
                 // Don't overwrite previousFrameBuffer - keep the last complete frame for beam mode
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onBreakpoint) this.onBreakpoint(this.cpu.pc);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
@@ -1861,9 +1837,7 @@ export class Spectrum {
                 }
                 const frameBuffer = this.ula.endFrame();
                 // Don't overwrite previousFrameBuffer - keep the last complete frame for beam mode
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onWatchpoint) this.onWatchpoint(this.lastWatchpoint);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
@@ -1882,9 +1856,7 @@ export class Spectrum {
                 }
                 const frameBuffer = this.ula.endFrame();
                 // Don't overwrite previousFrameBuffer - keep the last complete frame for beam mode
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onPortBreakpoint) this.onPortBreakpoint(this.lastPortBreakpoint);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
@@ -1901,9 +1873,7 @@ export class Spectrum {
                     this.ula.renderScanline(nextLineToRender++);
                 }
                 const frameBuffer = this.ula.endFrame();
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
                 return;
@@ -1919,9 +1889,7 @@ export class Spectrum {
                     this.ula.renderScanline(nextLineToRender++);
                 }
                 const frameBuffer = this.ula.endFrame();
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
                 return;
@@ -2010,11 +1978,7 @@ export class Spectrum {
         // so previousFrameBuffer includes border lines in paper area
         this.savePreviousFrame(frameBuffer);
 
-        this.imageData.data.set(frameBuffer);
-        this.ctx.putImageData(this.imageData, 0, 0);
-
-        // Draw overlay if enabled
-        this.drawOverlay();
+        if (this.onRender) this.onRender(frameBuffer);
 
         this.frameCount++;
         this.totalFrames++;
@@ -2450,6 +2414,14 @@ export class Spectrum {
      */
     getScreenDimensions() {
         return this.ula.getDimensions();
+    }
+
+    /**
+     * Get the current frame buffer (stable reference to ULA's internal buffer).
+     * @returns {Uint8ClampedArray} RGBA pixel data
+     */
+    getFrameBuffer() {
+        return this.ula.frameBuffer;
     }
 
     // ========== Overlay Drawing ==========
@@ -3272,13 +3244,6 @@ export class Spectrum {
         this.lastRafTime = null;  // Reset for accurate frame timing
         this.frameCount = 0;
 
-        // Register keyboard handlers once
-        if (!this.keyboardHandlersRegistered) {
-            document.addEventListener('keydown', this.boundKeyDown);
-            document.addEventListener('keyup', this.boundKeyUp);
-            this.keyboardHandlersRegistered = true;
-        }
-
         this.scheduleNextFrame();
     }
     
@@ -3651,9 +3616,7 @@ export class Spectrum {
             this.savePreviousFrame(frameBuffer);
         }
 
-        this.imageData.data.set(frameBuffer);
-        this.ctx.putImageData(this.imageData, 0, 0);
-        this.drawOverlay();
+        if (this.onRender) this.onRender(frameBuffer);
     }
 
     // Execute until past current instruction (skip over CALL/RST)
@@ -5199,150 +5162,6 @@ export class Spectrum {
 
     // ========== End Unified Trigger System ==========
 
-    // ========== Keyboard Handling ==========
-
-    handleKeyDown(e) {
-        // Don't capture keys when typing in input fields or contentEditable
-        const tag = e.target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-            return;
-        }
-        if (e.target.isContentEditable) {
-            return;
-        }
-        // Also check if any input has focus
-        const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) {
-            return;
-        }
-        if (active && active.isContentEditable) {
-            return;
-        }
-        
-        // Ignore real keyboard during RZX playback
-        if (this.rzxPlaying) {
-            return;
-        }
-
-        // Prevent browser shortcuts when emulator should capture them
-        // Alt+key combinations for ZX Spectrum Symbol Shift
-        if (e.altKey && !e.ctrlKey && !e.metaKey) {
-            const key = e.key.toLowerCase();
-            // Prevent Alt+key browser shortcuts for Symbol Shift combinations
-            if (['p', 's', 'o', 'n', 'w', 'r', 'f', 'h', 'j', 'k', 'l', 'u', 'i', 'b', 'd', 'g', 'a', 'z', 'x', 'c', 'v', 'e', 't', 'y', 'm', 'q', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(key)) {
-                e.preventDefault();
-            }
-        }
-
-        // Check e.key first for punctuation/shifted characters
-        // This must be before joystick checks so typing { } | etc works
-        if (e.key.length === 1 && !e.key.match(/^[a-zA-Z0-9]$/)) {
-            const mapping = this.ula.getKeyMapping(e.key);
-            if (mapping) {
-                e.preventDefault();
-                this.pressedKeys.set(e.code, e.key); // Track for proper release
-                this.ula.keyDown(e.key);
-                return;
-            }
-        }
-
-        // Kempston joystick on numpad (use e.code for cross-platform consistency)
-        const kempstonBit = this.getKempstonBit(e.code);
-        if (kempstonBit !== null) {
-            e.preventDefault();
-            this.kempstonState |= kempstonBit;
-            return;
-        }
-
-        // Extended Kempston buttons: [ = C, ] = A, \ = Start (only when not typing punctuation)
-        const extBit = this.getExtendedKempstonBit(e.code);
-        if (extBit !== null && this.kempstonExtendedEnabled) {
-            e.preventDefault();
-            this.kempstonExtendedState |= (1 << extBit);
-            return;
-        }
-
-        // Use e.code for layout-independent key detection (letters, digits, special keys)
-        if (this.ula.keyMap[e.code]) {
-            e.preventDefault();
-            this.pressedKeys.set(e.code, e.code); // Track for proper release
-            this.ula.keyDown(e.code);
-        }
-    }
-
-    handleKeyUp(e) {
-        // Don't capture keys when typing in input fields or contentEditable
-        const tag = e.target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-            return;
-        }
-        if (e.target.isContentEditable) {
-            return;
-        }
-        // Also check if any input has focus
-        const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) {
-            return;
-        }
-        if (active && active.isContentEditable) {
-            return;
-        }
-
-        // Use tracked key for proper release (handles shifted chars where e.key changes on release)
-        const trackedKey = this.pressedKeys.get(e.code);
-        if (trackedKey) {
-            e.preventDefault();
-            this.ula.keyUp(trackedKey);
-            this.pressedKeys.delete(e.code);
-            return;
-        }
-
-        // Kempston joystick on numpad (use e.code for cross-platform consistency)
-        const kempstonBit = this.getKempstonBit(e.code);
-        if (kempstonBit !== null) {
-            e.preventDefault();
-            this.kempstonState &= ~kempstonBit;
-            return;
-        }
-
-        // Extended Kempston buttons: [ = C, ] = A, \ = Start
-        const extBit = this.getExtendedKempstonBit(e.code);
-        if (extBit !== null && this.kempstonExtendedEnabled) {
-            e.preventDefault();
-            this.kempstonExtendedState &= ~(1 << extBit);
-            return;
-        }
-    }
-
-    getKempstonBit(code) {
-        // Numpad mapping to Kempston joystick (using e.code for consistency)
-        // Bit 0: Right, Bit 1: Left, Bit 2: Down, Bit 3: Up, Bit 4: Fire
-        switch (code) {
-            case 'Numpad8': return 0x08; // Up
-            case 'Numpad2': return 0x04; // Down
-            case 'Numpad4': return 0x02; // Left
-            case 'Numpad6': return 0x01; // Right
-            case 'Numpad5': return 0x10; // Fire
-            case 'Numpad0': return 0x10; // Fire
-            case 'Numpad1': return 0x06; // Down+Left
-            case 'Numpad3': return 0x05; // Down+Right
-            case 'Numpad7': return 0x0a; // Up+Left
-            case 'Numpad9': return 0x09; // Up+Right
-            default:  return null;
-        }
-    }
-
-    getExtendedKempstonBit(code) {
-        // Extended Kempston buttons: [ ] \
-        // Returns the bit number (5, 6, 7) not the mask
-        switch (code) {
-            case 'BracketLeft':  return 5; // [ = C button (bit 5)
-            case 'BracketRight': return 6; // ] = A button (bit 6)
-            case 'Backslash':    return 7; // \ = Start button (bit 7)
-            default:  return null;
-        }
-    }
-
     // Kempston Mouse update methods
     updateMousePosition(dx, dy) {
         // Clamp movement to prevent large jumps (max ±20 per update)
@@ -5788,8 +5607,7 @@ export class Spectrum {
 
             // Render current screen
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
 
             if (wasRunning) this.start();
 
@@ -5835,8 +5653,7 @@ export class Spectrum {
 
             // Render current screen
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
 
             if (wasRunning) this.start();
 
@@ -5952,8 +5769,7 @@ export class Spectrum {
             this.ula.startFrame();
             this.ula.attrInitial = null;  // Force use of current memory values
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
             if (wasRunning) this.start();
             return result;
         } catch (e) {
@@ -6018,8 +5834,7 @@ export class Spectrum {
             this.ula.attrInitial = null;  // Force use of current memory values
             // Update display
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
 
             if (wasRunning) this.start();
             return result;
@@ -6069,8 +5884,7 @@ export class Spectrum {
             this.ula.startFrame();
             this.ula.attrInitial = null;  // Force use of current memory values
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
             if (wasRunning) this.start();
             return result;
         } catch (e) {

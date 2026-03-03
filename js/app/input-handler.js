@@ -363,4 +363,122 @@ export function initInputHandler(spectrum, showMessage) {
             e.preventDefault();
         }
     }, { passive: false });
+
+    // ========== Keyboard Handling ==========
+    // Translates DOM KeyboardEvents into emulator key matrix / joystick state.
+    // DOM concerns (focus checks, preventDefault) stay here in the host.
+
+    function shouldIgnoreKeyEvent(e) {
+        const tag = e.target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+        if (e.target.isContentEditable) return true;
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return true;
+        if (active && active.isContentEditable) return true;
+        return false;
+    }
+
+    function getKempstonBit(code) {
+        switch (code) {
+            case 'Numpad8': return 0x08; // Up
+            case 'Numpad2': return 0x04; // Down
+            case 'Numpad4': return 0x02; // Left
+            case 'Numpad6': return 0x01; // Right
+            case 'Numpad5': return 0x10; // Fire
+            case 'Numpad0': return 0x10; // Fire
+            case 'Numpad1': return 0x06; // Down+Left
+            case 'Numpad3': return 0x05; // Down+Right
+            case 'Numpad7': return 0x0a; // Up+Left
+            case 'Numpad9': return 0x09; // Up+Right
+            default: return null;
+        }
+    }
+
+    function getExtendedKempstonBit(code) {
+        switch (code) {
+            case 'BracketLeft':  return 5; // [ = C button (bit 5)
+            case 'BracketRight': return 6; // ] = A button (bit 6)
+            case 'Backslash':    return 7; // \ = Start button (bit 7)
+            default: return null;
+        }
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (shouldIgnoreKeyEvent(e)) return;
+
+        // Ignore real keyboard during RZX playback
+        if (spectrum.rzxPlaying) return;
+
+        // Prevent browser shortcuts for Alt+key (Symbol Shift combinations)
+        if (e.altKey && !e.ctrlKey && !e.metaKey) {
+            const key = e.key.toLowerCase();
+            if ('psonfhwrjkluibdgazxcvetymq0123456789'.includes(key)) {
+                e.preventDefault();
+            }
+        }
+
+        // Check e.key first for punctuation/shifted characters
+        // This must be before joystick checks so typing { } | etc works
+        if (e.key.length === 1 && !e.key.match(/^[a-zA-Z0-9]$/)) {
+            const mapping = spectrum.ula.getKeyMapping(e.key);
+            if (mapping) {
+                e.preventDefault();
+                spectrum.pressedKeys.set(e.code, e.key);
+                spectrum.ula.keyDown(e.key);
+                return;
+            }
+        }
+
+        // Kempston joystick on numpad
+        const kempstonBit = getKempstonBit(e.code);
+        if (kempstonBit !== null) {
+            e.preventDefault();
+            spectrum.kempstonState |= kempstonBit;
+            return;
+        }
+
+        // Extended Kempston buttons
+        const extBit = getExtendedKempstonBit(e.code);
+        if (extBit !== null && spectrum.kempstonExtendedEnabled) {
+            e.preventDefault();
+            spectrum.kempstonExtendedState |= (1 << extBit);
+            return;
+        }
+
+        // Layout-independent key detection (letters, digits, special keys)
+        if (spectrum.ula.keyMap[e.code]) {
+            e.preventDefault();
+            spectrum.pressedKeys.set(e.code, e.code);
+            spectrum.ula.keyDown(e.code);
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        if (shouldIgnoreKeyEvent(e)) return;
+
+        // Use tracked key for proper release (handles shifted chars where e.key changes on release)
+        const trackedKey = spectrum.pressedKeys.get(e.code);
+        if (trackedKey) {
+            e.preventDefault();
+            spectrum.ula.keyUp(trackedKey);
+            spectrum.pressedKeys.delete(e.code);
+            return;
+        }
+
+        // Kempston joystick on numpad
+        const kempstonBit = getKempstonBit(e.code);
+        if (kempstonBit !== null) {
+            e.preventDefault();
+            spectrum.kempstonState &= ~kempstonBit;
+            return;
+        }
+
+        // Extended Kempston buttons
+        const extBit = getExtendedKempstonBit(e.code);
+        if (extBit !== null && spectrum.kempstonExtendedEnabled) {
+            e.preventDefault();
+            spectrum.kempstonExtendedState &= ~(1 << extBit);
+            return;
+        }
+    });
 }
