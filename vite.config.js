@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
     base: './',
     define: {
-        APP_VERSION: JSON.stringify('0.9.31'),
+        APP_VERSION: JSON.stringify('0.9.37'),
     },
     resolve: {
         extensions: ['.mts', '.ts', '.tsx', '.mjs', '.js', '.jsx', '.json'],
