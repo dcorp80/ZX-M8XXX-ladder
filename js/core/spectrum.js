@@ -3,6 +3,7 @@
  * @license GPL-3.0
  */
 
+import pako from 'pako';
 import { getMachineProfile, is128kCompat } from './machines.js';
 import { Disassembler } from './disasm.js';
 import { Memory } from './memory.js';
@@ -1548,26 +1549,36 @@ export class Spectrum {
         const intPulseDuration = this.profile.intPulseDuration;
         let intFired = false;
 
-        // INT pulse window: [intStart, intEnd)
-        // Early 48K: [0, 32), Late 48K: [1, 33), 128K/Pentagon: [0, 36)
-        const intOffset = (this.profile.earlyIntTiming && this.lateTimings) ? 1 : 0;
-        const intStart = intOffset;
-        const intEnd = intOffset + intPulseDuration;
+        // Early/Late INT timing (Swan-style):
+        // 48K only: Early at T-4, Late at frame boundary
+        // 128K/Pentagon: always at frame boundary
+        const earlyIntPoint = (this.profile.earlyIntTiming && !this.lateTimings) ?
+                               (tstatesPerFrame - 4) : tstatesPerFrame;
 
         // RZX recording: track instruction count before first interrupt
         let rzxRecInstrBeforeInt = this.rzxRecording ? this.cpu.instructionCount : 0;
 
         // Fire interrupt if within INT pulse window from previous frame overshoot
+        // INT pulse started at earlyIntPoint and lasts intPulseDuration T-states
         // During RZX playback: fire early interrupt unconditionally if CPU is halted
         // (HALT can only exit via interrupt, and T-states may not be in sync during RZX)
         const rzxHaltedNeedsInt = this.rzxPlaying && this.cpu.halted && this.cpu.iff1 && !this.cpu.eiPending;
         const normalIntWindow = !this.rzxPlaying &&
-            this.cpu.tStates >= intStart && this.cpu.tStates < intEnd &&
+            this.cpu.tStates >= 0 && this.cpu.tStates < intPulseDuration &&
             this.cpu.iff1 && !this.cpu.eiPending;
         if (rzxHaltedNeedsInt || normalIntWindow) {
             // RZX recording: capture instruction count BEFORE interrupt
             if (this.rzxRecording && !intFired) {
                 rzxRecInstrBeforeInt = this.cpu.instructionCount;
+            }
+            // If CPU is halted, count the final HALT NOP M1 before interrupt fires
+            if (this.cpu.halted) {
+                this.cpu.incR();
+                this.cpu.instructionCount++;  // HALT NOP M1 cycle
+                // Update capture after HALT NOP
+                if (this.rzxRecording && !intFired) {
+                    rzxRecInstrBeforeInt = this.cpu.instructionCount;
+                }
             }
             const _intOldPC = this.cpu.pc, _intOldSP = this.cpu.sp;
             const intTstates = this.cpu.interrupt();
@@ -1681,20 +1692,19 @@ export class Spectrum {
                     this.cpu.resetContend();
                     this.cpu.contend((this.cpu.pc + 1) & 0xffff);
                 }
-                const _haltTsBefore = this.cpu.tStates;
-                this.cpu.tStates += 4;
-                this.cpu.incR();
-                this.cpu.instructionCount++;  // HALT NOP is an M1 cycle for RZX
-                if (this.profiler.enabled) {
-                    const _pcKey = this.getAutoMapKey(this.cpu.pc);
-                    const _haltTsCost = this.cpu.tStates - _haltTsBefore;
-                    this.profiler.tStatesPerPC.set(_pcKey, (this.profiler.tStatesPerPC.get(_pcKey) || 0) + _haltTsCost);
-                }
 
-                // Check if INT should fire after this HALT NOP
-                if (!this.rzxPlaying && !intFired &&
-                    this.cpu.tStates >= intStart && this.cpu.tStates < intEnd &&
+                // Check if INT will fire during this HALT NOP cycle
+                // Skip during RZX playback - frame end controlled by instruction count (FUSE-style)
+                const nextT = this.cpu.tStates + 4;
+                const is48kEarly = this.profile.earlyIntTiming && !this.lateTimings;
+                if (!this.rzxPlaying && !intFired && is48kEarly &&
+                    this.cpu.tStates < earlyIntPoint && nextT >= earlyIntPoint &&
                     this.cpu.iff1 && !this.cpu.eiPending) {
+                    // Complete HALT NOP cycle + 4T alignment to match Swan timing
+                    this.cpu.tStates = nextT + 4;
+                    this.cpu.incR();
+                    this.cpu.instructionCount++;  // HALT NOP is an M1 cycle
+                    // RZX recording: capture instruction count BEFORE interrupt
                     if (this.rzxRecording) {
                         rzxRecInstrBeforeInt = this.cpu.instructionCount;
                     }
@@ -1703,11 +1713,23 @@ export class Spectrum {
                     this.cpu.tStates += intTstates;
                     this._trackInterruptCall(_hintOldPC, _hintOldSP);
                     intFired = true;
+                    // RZX recording: start recording RIGHT AFTER interrupt fires
                     if (this.rzxRecordPending) {
                         this.rzxStartRecordingNow();
                     }
                     this.autoMap.inExecution = false;
                     continue;
+                }
+
+                // Normal HALT NOP - no INT during this cycle
+                const _haltTsBefore = this.cpu.tStates;
+                this.cpu.tStates += 4;
+                this.cpu.incR();
+                this.cpu.instructionCount++;  // HALT NOP is an M1 cycle for RZX
+                if (this.profiler.enabled) {
+                    const _pcKey = this.getAutoMapKey(this.cpu.pc);
+                    const _haltTsCost = this.cpu.tStates - _haltTsBefore;
+                    this.profiler.tStatesPerPC.set(_pcKey, (this.profiler.tStatesPerPC.get(_pcKey) || 0) + _haltTsCost);
                 }
 
                 // Record trace for first HALT only (avoids flooding trace with repeated HALTs)
@@ -1792,7 +1814,7 @@ export class Spectrum {
 
                 // Check if INT should fire after this instruction
                 if (!this.rzxPlaying && !intFired &&
-                    this.cpu.tStates >= intStart && this.cpu.tStates < intEnd &&
+                    this.cpu.tStates >= 0 && this.cpu.tStates < intPulseDuration &&
                     this.cpu.iff1 && !this.cpu.eiPending) {
                     if (this.rzxRecording) {
                         rzxRecInstrBeforeInt = this.cpu.instructionCount;
@@ -2156,17 +2178,22 @@ export class Spectrum {
         const intPulseDuration = this.profile.intPulseDuration;
         let intFired = false;
 
-        // INT pulse window: [intStart, intEnd)
-        // Early 48K: [0, 32), Late 48K: [1, 33), 128K/Pentagon: [0, 36)
-        const intOffset = (this.profile.earlyIntTiming && this.lateTimings) ? 1 : 0;
-        const intStart = intOffset;
-        const intEnd = intOffset + intPulseDuration;
+        // Early/Late INT timing (Swan-style):
+        // 48K only: Early at T-4, Late at frame boundary
+        // 128K/Pentagon: always at frame boundary
+        const earlyIntPoint = (this.profile.earlyIntTiming && !this.lateTimings) ?
+                               (tstatesPerFrame - 4) : tstatesPerFrame;
 
         // Fire interrupt if within INT pulse window from previous frame overshoot
         // Skip during RZX playback - frame boundaries controlled by instruction count (FUSE-style)
         if (!this.rzxPlaying &&
-            this.cpu.tStates >= intStart && this.cpu.tStates < intEnd &&
+            this.cpu.tStates >= 0 && this.cpu.tStates < intPulseDuration &&
             this.cpu.iff1 && !this.cpu.eiPending) {
+            // If CPU is halted, count the final HALT NOP M1 before interrupt fires
+            if (this.cpu.halted) {
+                this.cpu.incR();
+                this.cpu.instructionCount++;  // HALT NOP M1 cycle
+            }
             const _hlIntOldPC = this.cpu.pc, _hlIntOldSP = this.cpu.sp;
             const intTstates = this.cpu.interrupt();
             this.cpu.tStates += intTstates;
@@ -2242,6 +2269,30 @@ export class Spectrum {
                     this.cpu.resetContend();
                     this.cpu.contend((this.cpu.pc + 1) & 0xffff);
                 }
+
+                // Check if INT will fire during this HALT NOP cycle
+                // INT acknowledged at end of HALT NOP cycle (instruction boundary)
+                // Only for 48K early timing: INT at T=69884
+                // 48K late and 128K/Pentagon use frame-start INT timing
+                // Skip during RZX playback - frame end controlled by instruction count (FUSE-style)
+                const nextT = this.cpu.tStates + 4;
+                const is48kEarly = this.profile.earlyIntTiming && !this.lateTimings;  // Cached in runFrame, needed here for runFrameHeadless
+                if (!this.rzxPlaying && !intFired && is48kEarly &&
+                    this.cpu.tStates < earlyIntPoint && nextT >= earlyIntPoint &&
+                    this.cpu.iff1 && !this.cpu.eiPending) {
+                    // Complete HALT NOP cycle + 4T alignment to match Swan timing
+                    // Swan shows T=60 at $805B, we had T=41, need +19T but only 4T affects quantized border
+                    this.cpu.tStates = nextT + 4;
+                    this.cpu.incR();
+                    const _hlHintOldPC = this.cpu.pc, _hlHintOldSP = this.cpu.sp;
+                    const intTstates = this.cpu.interrupt();
+                    this.cpu.tStates += intTstates;
+                    this._trackInterruptCall(_hlHintOldPC, _hlHintOldSP);
+                    intFired = true;
+                    continue;
+                }
+
+                // Normal HALT NOP - no INT during this cycle
                 const _hlHaltTsBefore = this.cpu.tStates;
                 this.cpu.tStates += 4;
                 this.cpu.incR();
@@ -2250,18 +2301,6 @@ export class Spectrum {
                     const _pcKey = this.getAutoMapKey(this.cpu.pc);
                     const _hlHaltTsCost = this.cpu.tStates - _hlHaltTsBefore;
                     this.profiler.tStatesPerPC.set(_pcKey, (this.profiler.tStatesPerPC.get(_pcKey) || 0) + _hlHaltTsCost);
-                }
-
-                // Check if INT should fire after this HALT NOP
-                if (!this.rzxPlaying && !intFired &&
-                    this.cpu.tStates >= intStart && this.cpu.tStates < intEnd &&
-                    this.cpu.iff1 && !this.cpu.eiPending) {
-                    const _hlHintOldPC = this.cpu.pc, _hlHintOldSP = this.cpu.sp;
-                    const intTstates = this.cpu.interrupt();
-                    this.cpu.tStates += intTstates;
-                    this._trackInterruptCall(_hlHintOldPC, _hlHintOldSP);
-                    intFired = true;
-                    continue;
                 }
 
                 // RZX playback: check if instruction count reached (FUSE-style frame end)
@@ -2304,7 +2343,7 @@ export class Spectrum {
 
                 // Check if INT should fire after this instruction
                 if (!this.rzxPlaying && !intFired &&
-                    this.cpu.tStates >= intStart && this.cpu.tStates < intEnd &&
+                    this.cpu.tStates >= 0 && this.cpu.tStates < intPulseDuration &&
                     this.cpu.iff1 && !this.cpu.eiPending) {
                     const _hlMintOldPC = this.cpu.pc, _hlMintOldSP = this.cpu.sp;
                     const intTstates = this.cpu.interrupt();
@@ -4978,21 +5017,6 @@ export class Spectrum {
     /**
      * Check if a port access trigger matches
      */
-    checkPortTriggers(port, val, isOut) {
-        if (this.triggers.length === 0) return null;
-        const types = isOut ? ['port_out', 'port_io'] : ['port_in', 'port_io'];
-        for (const t of this.triggers) {
-            if (!types.includes(t.type) || !t.enabled) continue;
-            if (this._matchesPortTrigger(t, port, val)) {
-                t.hitCount++;
-                if (t.hitCount > t.skipCount) {
-                    return t;
-                }
-            }
-        }
-        return null;
-    }
-
     checkTapeBlockTrigger(blockIndex) {
         for (const t of this.triggers) {
             if (t.type !== 'tape_block' || !t.enabled) continue;
@@ -5019,6 +5043,21 @@ export class Spectrum {
         for (const t of this.triggers) {
             if (t.type !== 'disk_sector' || !t.enabled) continue;
             if (t.start === track && t.end === sector) {
+                t.hitCount++;
+                if (t.hitCount > t.skipCount) {
+                    return t;
+                }
+            }
+        }
+        return null;
+    }
+
+    checkPortTriggers(port, val, isOut) {
+        if (this.triggers.length === 0) return null;
+        const types = isOut ? ['port_out', 'port_io'] : ['port_in', 'port_io'];
+        for (const t of this.triggers) {
+            if (!types.includes(t.type) || !t.enabled) continue;
+            if (this._matchesPortTrigger(t, port, val)) {
                 t.hitCount++;
                 if (t.hitCount > t.skipCount) {
                     return t;
@@ -6837,18 +6876,14 @@ export class Spectrum {
             offset += fd.length;
         }
 
-        // Compress frame data using pako (like eric.rzx)
+        // Compress frame data (like eric.rzx)
         let frameData;
         let isCompressed = false;
-        if (typeof pako !== 'undefined') {
-            try {
-                frameData = pako.deflate(uncompressedFrameData);
-                isCompressed = true;
-            } catch (e) {
-                console.warn('[RZX] Compression failed, using uncompressed:', e);
-                frameData = uncompressedFrameData;
-            }
-        } else {
+        try {
+            frameData = pako.deflate(uncompressedFrameData);
+            isCompressed = true;
+        } catch (e) {
+            console.warn('[RZX] Compression failed, using uncompressed:', e);
             frameData = uncompressedFrameData;
         }
 

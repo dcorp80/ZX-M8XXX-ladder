@@ -41,6 +41,7 @@ class TestRunner {
             skipped: document.getElementById('testsSkipped'),
             time: document.getElementById('testsTime'),
             fps: document.getElementById('testsFps'),
+            // resultsBody removed — results shown inline in test list rows
             // Preview mode elements
             btnPreview: document.getElementById('btnPreviewTest'),
             btnPausePreview: document.getElementById('btnPausePreview'),
@@ -297,7 +298,7 @@ class TestRunner {
                         this.setTestResult(test.id, 'pass', 'PASS');
                     } else {
                         failed++;
-                        const detail = result.diff ? `${result.diff.diffCount} pixels` : result.error || 'FAIL';
+                        const detail = result.diff ? `${result.diff.diffCount} pixels differ` : result.error || '';
                         this.setTestResult(test.id, 'fail', 'FAIL', detail);
                     }
                 } catch (e) {
@@ -343,10 +344,10 @@ class TestRunner {
         const row = this.elements.tableBody.querySelector(`tr[data-test-id="${testId}"]`);
         if (row) {
             const td = row.querySelector('.tests-col-result');
-            td.textContent = text;
+            td.textContent = status === 'pass' ? 'PASS' : status === 'fail' ? 'FAIL' : text;
             td.className = `tests-col-result tests-result-${status}`;
             const dtd = row.querySelector('.tests-col-details');
-            if (dtd) dtd.textContent = detail || '';
+            if (dtd && detail) dtd.textContent = detail;
         }
     }
 
@@ -1307,19 +1308,7 @@ class TestRunner {
     }
 
     renderResultsSummary() {
-        // Update details column in existing test rows
-        for (const { test, result } of this.results) {
-            if (!result.passed) {
-                let detail = '';
-                if (result.error) detail = result.error;
-                else if (result.diff) detail = `Step ${(result.step || 0) + 1}, frame ${result.frame}: ${result.diff.diffCount} px`;
-                const row = this.elements.tableBody.querySelector(`tr[data-test-id="${test.id}"]`);
-                if (row) {
-                    const dtd = row.querySelector('.tests-col-details');
-                    if (dtd) dtd.textContent = detail;
-                }
-            }
-        }
+        // Results are already shown inline in the test list rows via setTestResult
     }
 
     abort() {

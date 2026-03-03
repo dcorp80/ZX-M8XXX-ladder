@@ -4,6 +4,7 @@
  * @license GPL-3.0
  */
 
+import pako from 'pako';
 import { getMachineByZ80HwMode, getMachineBySzxId } from './machines.js';
 import {
     PAGE_SIZE,
@@ -3136,53 +3137,16 @@ export class RZXLoader {
     }
 
     async decompress(data, expectedSize) {
-        // Prefer pako if available (more reliable error handling)
-        if (typeof pako !== 'undefined') {
-            // Try zlib format first (with header), then raw deflate
+        // Try zlib format first (with header), then raw deflate
+        try {
+            return pako.inflate(data);
+        } catch (e1) {
             try {
-                return pako.inflate(data);
-            } catch (e1) {
-                try {
-                    return pako.inflateRaw(data);
-                } catch (e2) {
-                    // Both failed - throw combined error
-                    throw new Error('Decompression failed');
-                }
-            }
-        }
-
-        // Fallback to DecompressionStream (modern browsers without pako)
-        if (typeof DecompressionStream !== 'undefined') {
-            try {
-                const ds = new DecompressionStream('deflate-raw');
-                const writer = ds.writable.getWriter();
-                writer.write(data);
-                writer.close();
-
-                const reader = ds.readable.getReader();
-                const chunks = [];
-                let totalLen = 0;
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    chunks.push(value);
-                    totalLen += value.length;
-                }
-
-                const result = new Uint8Array(totalLen);
-                let offset = 0;
-                for (const chunk of chunks) {
-                    result.set(chunk, offset);
-                    offset += chunk.length;
-                }
-                return result;
-            } catch (e) {
+                return pako.inflateRaw(data);
+            } catch (e2) {
                 throw new Error('Decompression failed');
             }
         }
-
-        throw new Error('No decompression method available. Include pako.js for RZX support.');
     }
 
     getSnapshot() {
@@ -3736,13 +3700,10 @@ export class SZXLoader {
     }
 
     /**
-     * Decompress zlib data (requires pako)
+     * Decompress zlib data
      */
     static decompress(data) {
-        if (typeof pako !== 'undefined') {
-            return pako.inflate(data);
-        }
-        throw new Error('pako library required for SZX decompression');
+        return pako.inflate(data);
     }
 
     /**
@@ -4014,20 +3975,17 @@ export class SZXLoader {
      * Create a RAMP (RAM Page) chunk with optional compression
      */
     static makeRAMPChunk(pageNum, pageData) {
-        // Try to compress with pako if available
         let compressed = null;
         let useCompression = false;
 
-        if (typeof pako !== 'undefined') {
-            try {
-                compressed = pako.deflate(pageData);
-                // Only use compression if it actually saves space
-                if (compressed.length < pageData.length - 100) {
-                    useCompression = true;
-                }
-            } catch (e) {
-                // Compression failed, use uncompressed
+        try {
+            compressed = pako.deflate(pageData);
+            // Only use compression if it actually saves space
+            if (compressed.length < pageData.length - 100) {
+                useCompression = true;
             }
+        } catch (e) {
+            // Compression failed, use uncompressed
         }
 
         const data = useCompression ? compressed : pageData;

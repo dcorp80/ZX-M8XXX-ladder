@@ -1,0 +1,43 @@
+{
+  "name": "zx-m8xxx",
+  "version": "0.9.31",
+  "description": "ZX-M8XXX (ZX Matrix) is a vanilla JavaScript ZX Spectrum emulator",
+  "keywords": [
+    "zx-spectrum",
+    "emulator",
+    "8-bit",
+    "z80",
+    "retro-computing",
+    "home-computer"
+  ],
+  "homepage": "https://github.com/dcorp80/ZX-M8XXX#readme",
+  "bugs": {
+    "url": "https://github.com/dcorp80/ZX-M8XXX/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dcorp80/ZX-M8XXX.git"
+  },
+  "license": "GPL-3.0",
+  "author": "",
+  "type": "module",
+  "main": "index.html",
+  "private": true,
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "pako": "^2.1.0"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.37.5",
+    "vite": "^7.3.1"
+  }
+}

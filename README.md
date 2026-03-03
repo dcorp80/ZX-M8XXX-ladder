@@ -2,7 +2,7 @@
 
 **Version 0.9.37** | [Changelog](CHANGELOG.md)
 
-ZX-M8XXX (ZX Matrix) is a vanilla JavaScript ZX Spectrum emulator with an integrated debugger designed for reverse engineering and development. No build tools, no dependencies - just open `index.html` in your browser.
+ZX-M8XXX (ZX Matrix) is a vanilla JavaScript ZX Spectrum emulator with an integrated debugger designed for reverse engineering and development. Uses Vite for bundling and pako as a dependency.
 
 ## Features
 
@@ -65,7 +65,11 @@ ZX-M8XXX (ZX Matrix) is a vanilla JavaScript ZX Spectrum emulator with an integr
 
 ## Quick Start
 
-1. Place ROM files in `roms/` directory:
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Place ROM files in `roms/` directory:
    - `48.rom` - ZX Spectrum 48K (16KB, required)
    - `128.rom` - ZX Spectrum 128K (32KB, optional)
    - `plus2.rom` - ZX Spectrum +2 (32KB, optional)
@@ -74,8 +78,11 @@ ZX-M8XXX (ZX Matrix) is a vanilla JavaScript ZX Spectrum emulator with an integr
    - `pentagon.rom` - Pentagon 128K (32KB, optional)
    - `scorpion.rom` - Scorpion ZS 256 (64KB, optional)
    - `trdos.rom` - TR-DOS 5.03/5.04t (16KB, for disk images)
-2. Open `index.html` in a modern browser
-3. Click **Help** button for comprehensive documentation
+3. Start the dev server:
+   ```bash
+   npm run dev
+   ```
+4. Click **Help** button for comprehensive documentation
 
 ## File Formats
 
