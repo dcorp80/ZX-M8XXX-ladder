@@ -30,12 +30,7 @@ import {
 } from './constants.js';
 
 export class Spectrum {
-    constructor(canvas, options = {}) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
-        this.overlayCanvas = options.overlayCanvas || null;
-        this.overlayCtx = this.overlayCanvas ? this.overlayCanvas.getContext('2d') : null;
-        this.zoom = 1;
+    constructor(options = {}) {
         this.machineType = options.machineType || '48k';
         this.profile = getMachineProfile(this.machineType);
         this.tapeTrapsEnabled = options.tapeTrapsEnabled !== false;
@@ -81,7 +76,7 @@ export class Spectrum {
         this.aySelectedRegister = 0;
 
         // Audio manager (initialized on user interaction due to browser autoplay policy)
-        this.audio = null;
+        this.onAudioFrame = null;  // Host-side audio processing callback
 
         // Beeper state tracking for audio generation
         this.beeperChanges = [];      // Array of {tStates, level} for frame
@@ -94,21 +89,20 @@ export class Spectrum {
         this.cpu.portWrite = this.portWrite.bind(this);
         
         this.timing = this.ula.getTiming();
-        this.frameInterval = null;
         this.running = false;
-        this.lastFrameTime = 0;
         this.frameCount = 0;
         this.totalFrames = 0;       // Monotonic frame counter (never reset, for port I/O log)
-        this.actualFps = 0;
         
         this.updateDisplayDimensions();
 
         this.romLoaded = false;
-        this.overlayMode = 'none';  // Overlay mode: none, grid, screen, reveal
+        // overlayMode removed — now owned by overlay-renderer.js
         this.onFrame = null;
         this.onRomLoaded = null;
         this.onError = null;
         this.onBreakpoint = null; // Called when breakpoint hit
+        this.onRender = null; // Called with frameBuffer when screen needs display
+        this.onDisplayDimensionsChanged = null; // Called when display dimensions change
         this.breakpointTStates = 0; // T-states accumulated since last breakpoint
         this._bpTStatesResetPending = false; // Deferred reset: stays visible until next action
         this._debugCallStack = []; // Runtime call stack: [{addr, caller}] tracked via SP changes
@@ -117,7 +111,6 @@ export class Spectrum {
         
         // Speed control (100 = normal, 0 = max)
         this.speed = 100;
-        this.rafId = null;
 
         // Late timing model (affects ULA timing including INT, floating bus, contention)
         // Early = cold ULA, Late = warm ULA
@@ -338,35 +331,13 @@ export class Spectrum {
         this.memory.onWrite = null;
         this.cpu.onFetch = null;
 
-        this.boundKeyDown = this.handleKeyDown.bind(this);
         this.pressedKeys = new Map(); // Track e.code → e.key for proper release
-        this.boundKeyUp = this.handleKeyUp.bind(this);
-        this.keyboardHandlersRegistered = false;
     }
 
     // ========== Initialization ==========
 
-    async init(romUrl) {
-        try {
-            if (romUrl) await this.loadRom(romUrl);
-            this.reset();
-            return true;
-        } catch (e) {
-            if (this.onError) this.onError(e);
-            return false;
-        }
-    }
-    
-    async loadRom(source, bank = 0) {
-        let data;
-        if (typeof source === 'string') {
-            const response = await fetch(source);
-            if (!response.ok) throw new Error(`Failed to load ROM: ${response.status}`);
-            data = await response.arrayBuffer();
-        } else {
-            data = source;
-        }
-        this.memory.loadRom(data, bank);
+    loadRom(source, bank = 0) {
+        this.memory.loadRom(source, bank);
         this.romLoaded = true;
         if (this.onRomLoaded) this.onRomLoaded();
     }
@@ -991,38 +962,16 @@ export class Spectrum {
     // ========== Display Settings ==========
 
     updateDisplayDimensions() {
-        const dims = this.ula.getDimensions();
-        this.canvas.width = dims.width;
-        this.canvas.height = dims.height;
-        this.imageData = this.ctx.createImageData(dims.width, dims.height);
-        // Store previous frame for beam visualization mode
-        this.previousFrameBuffer = new Uint8ClampedArray(dims.width * dims.height * 4);
+        if (this.onDisplayDimensionsChanged) this.onDisplayDimensionsChanged();
     }
 
-    // Save current frame as previous (call at end of each frame)
-    savePreviousFrame(frameBuffer) {
-        if (this.previousFrameBuffer && frameBuffer) {
-            this.previousFrameBuffer.set(frameBuffer);
-        }
-    }
-
-    setGrid(enabled) {
-        // Legacy support
-        this.overlayMode = enabled ? 'grid' : 'none';
+    // Thin shims — overlay renderer owns these, but display-sound.js / project-io.js call through spectrum
+    setZoom(zoom) {
+        if (this.onZoomChanged) this.onZoomChanged(zoom);
     }
 
     setOverlayMode(mode) {
-        // mode: 'normal', 'grid', 'box', 'screen', 'reveal', 'beam', 'beamscreen', 'noattr', 'nobitmap'
-        this.overlayMode = mode;
-        this.ula.borderOnly = (mode === 'screen' || mode === 'reveal' || mode === 'beamscreen');
-    }
-
-    setZoom(zoom) {
-        this.zoom = zoom;
-        // Update overlay context reference after canvas resize
-        if (this.overlayCanvas) {
-            this.overlayCtx = this.overlayCanvas.getContext('2d');
-        }
+        if (this.onOverlayModeChanged) this.onOverlayModeChanged(mode);
     }
 
     // ========== Machine Control ==========
@@ -1649,9 +1598,7 @@ export class Spectrum {
                 }
                 const frameBuffer = this.ula.endFrame();
                 // Don't overwrite previousFrameBuffer - keep the last complete frame for beam mode
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onBreakpoint) this.onBreakpoint(this.cpu.pc);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
@@ -1861,9 +1808,7 @@ export class Spectrum {
                 }
                 const frameBuffer = this.ula.endFrame();
                 // Don't overwrite previousFrameBuffer - keep the last complete frame for beam mode
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onWatchpoint) this.onWatchpoint(this.lastWatchpoint);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
@@ -1882,9 +1827,7 @@ export class Spectrum {
                 }
                 const frameBuffer = this.ula.endFrame();
                 // Don't overwrite previousFrameBuffer - keep the last complete frame for beam mode
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onPortBreakpoint) this.onPortBreakpoint(this.lastPortBreakpoint);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
@@ -1901,9 +1844,7 @@ export class Spectrum {
                     this.ula.renderScanline(nextLineToRender++);
                 }
                 const frameBuffer = this.ula.endFrame();
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
                 return;
@@ -1919,9 +1860,7 @@ export class Spectrum {
                     this.ula.renderScanline(nextLineToRender++);
                 }
                 const frameBuffer = this.ula.endFrame();
-                this.imageData.data.set(frameBuffer);
-                this.ctx.putImageData(this.imageData, 0, 0);
-                this.drawOverlay();
+                if (this.onRender) this.onRender(frameBuffer);
                 if (this.onTrigger) this.onTrigger(this.lastTrigger);
                 this._bpTStatesResetPending = true;
                 return;
@@ -1953,68 +1892,7 @@ export class Spectrum {
 
         const frameBuffer = this.ula.endFrame();
 
-        // Handle border-only modes: replace paper area with border color
-        // Use proper T-state calculation to extend border into paper area
-        const borderOnlyMode = this.overlayMode === 'screen' || this.overlayMode === 'reveal' || this.overlayMode === 'beamscreen';
-        if (borderOnlyMode) {
-            const dims = this.ula.getDimensions();
-            const changes = this.ula.borderChanges;
-            const palette = this.ula.palette;
-
-            // Fill paper area with border colors
-            for (let y = dims.borderTop; y < dims.borderTop + dims.screenHeight; y++) {
-                // Calculate T-state range for this line
-                const lineStartTstate = this.ula.calculateLineStartTstate(y);
-
-                // Find starting color for this line
-                let currentColor = (changes && changes.length > 0) ? changes[0].color : this.ula.borderColor;
-                let changeIdx = 0;
-
-                if (changes && changes.length > 0) {
-                    for (let i = 0; i < changes.length; i++) {
-                        if (changes[i].tState <= lineStartTstate) {
-                            currentColor = changes[i].color;
-                            changeIdx = i + 1;
-                        } else {
-                            break;
-                        }
-                    }
-                }
-
-                // Fill paper area with proper border colors based on T-state
-                for (let x = dims.borderLeft; x < dims.borderLeft + dims.screenWidth; x++) {
-                    // T-state for this pixel position
-                    const pixelTstate = lineStartTstate + Math.floor(x / 2);
-
-                    // Update color if there are changes before this T-state
-                    if (changes) {
-                        while (changeIdx < changes.length && changes[changeIdx].tState <= pixelTstate) {
-                            currentColor = changes[changeIdx].color;
-                            changeIdx++;
-                        }
-                    }
-
-                    // Ensure color index is valid and get RGB from palette
-                    const colorIdx = currentColor & 7;
-                    const rgb = palette ? palette[colorIdx] : [0, 0, 0, 255];
-                    const idx = (y * dims.width + x) * 4;
-                    frameBuffer[idx] = rgb[0];
-                    frameBuffer[idx + 1] = rgb[1];
-                    frameBuffer[idx + 2] = rgb[2];
-                    frameBuffer[idx + 3] = 255;
-                }
-            }
-        }
-
-        // Save frame for beam visualization modes AFTER border-only modification
-        // so previousFrameBuffer includes border lines in paper area
-        this.savePreviousFrame(frameBuffer);
-
-        this.imageData.data.set(frameBuffer);
-        this.ctx.putImageData(this.imageData, 0, 0);
-
-        // Draw overlay if enabled
-        this.drawOverlay();
+        if (this.onRender) this.onRender(frameBuffer);
 
         this.frameCount++;
         this.totalFrames++;
@@ -2028,19 +1906,15 @@ export class Spectrum {
             }
         }
 
-        // Process AY + beeper + tape audio for this frame (skip at high speeds - audio would be meaningless)
-        if (this.audio && this.audio.enabled && this.speed > 0 && this.speed <= 200) {
-            // Get tape audio from tape player (if playing and enabled)
-            // Also suppress tape audio briefly after returning from high speed
-            const tapeAudioSuppressed = this._suppressTapeAudioUntil && Date.now() < this._suppressTapeAudioUntil;
-            // Suppress tape audio in flash load mode — tape player may still run
-            // for turbo block EAR bit generation, but audio output is muted
+        // Audio processing — host handles actual audio output via callback
+        if (this.onAudioFrame && this.speed > 0 && this.speed <= 200) {
+            const tapeAudioSuppressed = this._suppressTapeAudioFrames > 0;
+            if (tapeAudioSuppressed) this._suppressTapeAudioFrames--;
             const tapeAudioChanges = (this.tapeAudioEnabled && !this.tapeFlashLoad &&
                 this.tapePlayer.isPlaying() && !tapeAudioSuppressed)
                 ? this.tapePlayer.getEdgeTransitions() : [];
 
-            // Pass tape audio changes (ROM doesn't echo tape signal to speaker)
-            this.audio.processFrame(tstatesPerFrame, this.beeperChanges, this.beeperLevel, tapeAudioChanges);
+            this.onAudioFrame(tstatesPerFrame, this.beeperChanges, this.beeperLevel, tapeAudioChanges);
         }
 
         // Advance AY logging frame counter
@@ -2125,324 +1999,10 @@ export class Spectrum {
             this.pendingSnapCallback = null;
             callback();
         }
-    }
-
-    // ========== Headless Execution (for test suite) ==========
-
-    /**
-     * Run a frame without rendering - for fast test execution
-     * Returns the number of T-states executed
-     */
-    runFrameHeadless() {
-        const tstatesPerFrame = this.timing.tstatesPerFrame;
-        const tstatesPerLine = this.timing.tstatesPerLine;
-
-        // Preserve T-state overshoot from previous frame (Swan-style)
-        if (this.cpu.tStates >= tstatesPerFrame) {
-            this.cpu.tStates -= tstatesPerFrame;
-            // Also adjust tape timing tracker to stay in sync
-            if (this._lastTapeUpdate >= tstatesPerFrame) {
-                this._lastTapeUpdate -= tstatesPerFrame;
-            } else {
-                this._lastTapeUpdate = this.cpu.tStates;
-            }
-        } else if (this.cpu.tStates < 0 || isNaN(this.cpu.tStates)) {
-            this.cpu.tStates = 0;
-            this._lastTapeUpdate = 0;
-        }
-
-        // Track frame start offset for border timing adjustment
-        this.frameStartOffset = this.cpu.tStates;
-
-        // Reset accumulated contention for new frame (ULA timing)
-        this.accumulatedContention = 0;
-
-        this.ula.startFrame();
-        this.ula.processExtendedMode(); // Process extended mode key sequences
-        this.lastContentionLine = -1;
-        this.beeperChanges = [];       // Reset beeper changes for new frame
-
-        // Start new frame for tape player (reset edge transitions)
-        if (this.tapePlayer.isPlaying()) {
-            this.tapePlayer.startFrame(this.cpu.tStates);
-        }
-
-        // RZX playback: reset T-states at frame start for proper scanline rendering
-        // RZX frames end based on instruction count, not T-states, so T-states can drift
-        // This ensures all scanlines are rendered from the beginning each frame
-        if (this.rzxPlaying) {
-            this.cpu.tStates = 0;
-        }
-
-        // INT pulse duration from profile (32 T-states for 48K, 36 for 128K/Pentagon)
-        const intPulseDuration = this.profile.intPulseDuration;
-        let intFired = false;
-
-        // Early/Late INT timing (Swan-style):
-        // 48K only: Early at T-4, Late at frame boundary
-        // 128K/Pentagon: always at frame boundary
-        const earlyIntPoint = (this.profile.earlyIntTiming && !this.lateTimings) ?
-                               (tstatesPerFrame - 4) : tstatesPerFrame;
-
-        // Fire interrupt if within INT pulse window from previous frame overshoot
-        // Skip during RZX playback - frame boundaries controlled by instruction count (FUSE-style)
-        if (!this.rzxPlaying &&
-            this.cpu.tStates >= 0 && this.cpu.tStates < intPulseDuration &&
-            this.cpu.iff1 && !this.cpu.eiPending) {
-            // If CPU is halted, count the final HALT NOP M1 before interrupt fires
-            if (this.cpu.halted) {
-                this.cpu.incR();
-                this.cpu.instructionCount++;  // HALT NOP M1 cycle
-            }
-            const _hlIntOldPC = this.cpu.pc, _hlIntOldSP = this.cpu.sp;
-            const intTstates = this.cpu.interrupt();
-            this.cpu.tStates += intTstates;
-            this._trackInterruptCall(_hlIntOldPC, _hlIntOldSP);
-            intFired = true;
-        }
-
-        // RZX playback: cache expected fetch count for this frame
-        let rzxExpectedFetchCount = 0;
-        let rzxSafetyLimit = 0;  // Safety limit to prevent infinite loops
-        if (this.rzxPlaying && this.rzxPlayer) {
-            const frameInfo = this.rzxPlayer.getFrameInfo(this.rzxFrame);
-            if (frameInfo) {
-                rzxExpectedFetchCount = frameInfo.fetchCount;
-                // Safety limit: 2x expected count - if exceeded, something is very wrong
-                rzxSafetyLimit = rzxExpectedFetchCount * 2;
-            }
-        }
-
-        // Track which line to render next (same as runFrame for consistent output)
-        let nextLineToRender = Math.floor(this.cpu.tStates / tstatesPerLine);
-        const totalLines = Math.floor(tstatesPerFrame / tstatesPerLine);
-
-        // Main frame loop - runs until tstatesPerFrame (or until instruction count during RZX)
-        // During RZX playback, frame ends based on instruction count, not T-states (FUSE-style)
-        while (this.rzxPlaying ? true : this.cpu.tStates < tstatesPerFrame) {
-            // Render complete scanlines as we pass them (same as runFrame)
-            while (nextLineToRender < totalLines) {
-                const lineEndT = (nextLineToRender + 1) * tstatesPerLine;
-                if (this.cpu.tStates >= lineEndT) {
-                    this.ula.renderScanline(nextLineToRender);
-                    nextLineToRender++;
-                } else {
-                    break;
-                }
-            }
-
-            // Beta Disk automatic ROM paging (Pentagon only)
-            this.updateBetaDiskPaging();
-
-            // Tape traps still active for test loading
-            if (this.tapeTrapsEnabled && this.tapeTrap.checkTrap()) continue;
-            if (this.tapeTrapsEnabled && this.trdosTrap.checkTrap()) continue;
-
-            // Apply ULA contention per-line for 48K and 128K
-            if (this.profile.hasContention && this.contentionEnabled) {
-                const ulaContention = this.ula.ULA_CONTENTION_TSTATES || 0;
-                if (ulaContention > 0) {
-                    const line = Math.floor(this.cpu.tStates / tstatesPerLine);
-                    const firstScreenLine = this.ula.FIRST_SCREEN_LINE;
-                    const screenLine = line - firstScreenLine;
-
-                    if (screenLine >= 0 && screenLine < 192) {
-                        if (this.lastContentionLine !== line) {
-                            this.lastContentionLine = line;
-                            this.cpu.tStates += ulaContention;
-                        }
-                    }
-                }
-            }
-
-            // Execute ONE instruction
-            const tStatesBefore = this.cpu.tStates;
-            if (this.cpu.halted) {
-                // Process eiPending during HALT NOP cycles (same as instruction boundary)
-                if (this.cpu.eiPending) {
-                    this.cpu.eiPending = false;
-                    this.cpu.iff1 = this.cpu.iff2 = true;
-                }
-
-                // Normal HALT NOP — M1 fetch from (PC+1), subject to contention
-                if (this.profile.hasContention && this.contentionEnabled && this.cpu.contend) {
-                    this.cpu.resetContend();
-                    this.cpu.contend((this.cpu.pc + 1) & 0xffff);
-                }
-
-                // Check if INT will fire during this HALT NOP cycle
-                // INT acknowledged at end of HALT NOP cycle (instruction boundary)
-                // Only for 48K early timing: INT at T=69884
-                // 48K late and 128K/Pentagon use frame-start INT timing
-                // Skip during RZX playback - frame end controlled by instruction count (FUSE-style)
-                const nextT = this.cpu.tStates + 4;
-                const is48kEarly = this.profile.earlyIntTiming && !this.lateTimings;  // Cached in runFrame, needed here for runFrameHeadless
-                if (!this.rzxPlaying && !intFired && is48kEarly &&
-                    this.cpu.tStates < earlyIntPoint && nextT >= earlyIntPoint &&
-                    this.cpu.iff1 && !this.cpu.eiPending) {
-                    // Complete HALT NOP cycle + 4T alignment to match Swan timing
-                    // Swan shows T=60 at $805B, we had T=41, need +19T but only 4T affects quantized border
-                    this.cpu.tStates = nextT + 4;
-                    this.cpu.incR();
-                    const _hlHintOldPC = this.cpu.pc, _hlHintOldSP = this.cpu.sp;
-                    const intTstates = this.cpu.interrupt();
-                    this.cpu.tStates += intTstates;
-                    this._trackInterruptCall(_hlHintOldPC, _hlHintOldSP);
-                    intFired = true;
-                    continue;
-                }
-
-                // Normal HALT NOP - no INT during this cycle
-                const _hlHaltTsBefore = this.cpu.tStates;
-                this.cpu.tStates += 4;
-                this.cpu.incR();
-                this.cpu.instructionCount++;  // HALT NOP counts as M1 cycle
-                if (this.profiler.enabled) {
-                    const _pcKey = this.getAutoMapKey(this.cpu.pc);
-                    const _hlHaltTsCost = this.cpu.tStates - _hlHaltTsBefore;
-                    this.profiler.tStatesPerPC.set(_pcKey, (this.profiler.tStatesPerPC.get(_pcKey) || 0) + _hlHaltTsCost);
-                }
-
-                // RZX playback: check if instruction count reached (FUSE-style frame end)
-                if (this.rzxPlaying && rzxExpectedFetchCount > 0) {
-                    const m1Count = this.cpu.instructionCount - this.rzxFrameStartInstr;
-                    if (m1Count >= rzxExpectedFetchCount) {
-                        break;  // End frame - instruction count reached
-                    }
-                    // Safety check: if way over expected count, break to prevent infinite loop
-                    if (rzxSafetyLimit > 0 && m1Count > rzxSafetyLimit) {
-                        console.error(`RZX F${this.rzxFrame}: safety limit exceeded (HALT)! M1=${m1Count} expected=${rzxExpectedFetchCount}`);
-                        break;
-                    }
-                }
-            } else {
-                const _hlCsOldPC = this.cpu.pc, _hlCsOldSP = this.cpu.sp;
-                const _hlTsBefore = this.cpu.tStates;
-                this.cpu.execute();
-                this._trackCallStack(_hlCsOldPC, _hlCsOldSP);
-                // Profiler: track CALL/RST entries and per-PC T-states
-                if (this.profiler.enabled) {
-                    this._profilerTrackCallRet(_hlCsOldPC, _hlCsOldSP);
-                    const _hlTsCost = this.cpu.tStates - _hlTsBefore;
-                    const _hlPcKey = this.getAutoMapKey(_hlCsOldPC);
-                    this.profiler.tStatesPerPC.set(_hlPcKey, (this.profiler.tStatesPerPC.get(_hlPcKey) || 0) + _hlTsCost);
-                }
-
-                // RZX playback: check if instruction count reached (FUSE-style frame end)
-                if (this.rzxPlaying && rzxExpectedFetchCount > 0) {
-                    const m1Count = this.cpu.instructionCount - this.rzxFrameStartInstr;
-                    if (m1Count >= rzxExpectedFetchCount) {
-                        break;  // End frame - instruction count reached
-                    }
-                    // Safety check: if way over expected count, break to prevent infinite loop
-                    if (rzxSafetyLimit > 0 && m1Count > rzxSafetyLimit) {
-                        console.error(`RZX F${this.rzxFrame}: safety limit exceeded! M1=${m1Count} expected=${rzxExpectedFetchCount}`);
-                        break;
-                    }
-                }
-
-                // Check if INT should fire after this instruction
-                if (!this.rzxPlaying && !intFired &&
-                    this.cpu.tStates >= 0 && this.cpu.tStates < intPulseDuration &&
-                    this.cpu.iff1 && !this.cpu.eiPending) {
-                    const _hlMintOldPC = this.cpu.pc, _hlMintOldSP = this.cpu.sp;
-                    const intTstates = this.cpu.interrupt();
-                    this.cpu.tStates += intTstates;
-                    this._trackInterruptCall(_hlMintOldPC, _hlMintOldSP);
-                    intFired = true;
-                }
-            }
-
-            // Update tape player for real-time playback
-            // Note: May have been partially updated during port reads for accurate timing
-            if (this.tapePlayer.isPlaying()) {
-                const tStatesNow = this.cpu.tStates;
-                const elapsed = tStatesNow - this._lastTapeUpdate;
-                if (elapsed > 0) {
-                    this.tapePlayer.update(elapsed, tStatesNow);
-                    this._lastTapeUpdate = tStatesNow;
-                }
-                this.tapeEarBit = this.tapePlayer.getEarBit();
-            }
-        }
-
-        // RZX playback: capture M1 count BEFORE interrupt (fetchCount excludes interrupt acknowledge)
-        // (Note: runFrameHeadless doesn't log RZX mismatches but captures for consistency)
-        const rzxM1BeforeInt = this.rzxPlaying ? (this.cpu.instructionCount - this.rzxFrameStartInstr) : 0;
-
-        // RZX playback: fire interrupt at frame end (FUSE-style)
-        if (this.rzxPlaying && this.cpu.iff1 && !this.cpu.eiPending) {
-            const _hlRzxIntOldPC = this.cpu.pc, _hlRzxIntOldSP = this.cpu.sp;
-            const intTstates = this.cpu.interrupt();
-            this.cpu.tStates += intTstates;
-            this._trackInterruptCall(_hlRzxIntOldPC, _hlRzxIntOldSP);
-        }
-
-        // Render any remaining scanlines (same as runFrame)
-        while (nextLineToRender < totalLines) {
-            this.ula.renderScanline(nextLineToRender++);
-        }
-
-        // Complete frame rendering (same as runFrame)
-        this.ula.endFrame();
-
-        this.frameCount++;
-        this.totalFrames++;
-
-        // Profiler: countdown and stop when done
-        if (this.profiler.enabled) {
-            this.profiler.framesRemaining--;
-            if (this.profiler.framesRemaining <= 0) {
-                this.stopProfiling();
-            }
-        }
-
-        // Process AY + beeper + tape audio for this frame (skip at high speeds - audio would be meaningless)
-        if (this.audio && this.audio.enabled && this.speed > 0 && this.speed <= 200) {
-            // Get tape audio from tape player (if playing and enabled)
-            // Also suppress tape audio briefly after returning from high speed
-            const tapeAudioSuppressed = this._suppressTapeAudioUntil && Date.now() < this._suppressTapeAudioUntil;
-            // Suppress tape audio in flash load mode — tape player may still run
-            // for turbo block EAR bit generation, but audio output is muted
-            const tapeAudioChanges = (this.tapeAudioEnabled && !this.tapeFlashLoad &&
-                this.tapePlayer.isPlaying() && !tapeAudioSuppressed)
-                ? this.tapePlayer.getEdgeTransitions() : [];
-
-            // Pass tape audio changes (ROM doesn't echo tape signal to speaker)
-            this.audio.processFrame(tstatesPerFrame, this.beeperChanges, this.beeperLevel, tapeAudioChanges);
-        }
-
-        // Advance AY logging frame counter
-        if (this.ay) {
-            this.ay.advanceLogFrame();
-        }
-
-        // RZX: advance to next frame (same as runFrame)
-        if (this.rzxPlaying && this.rzxPlayer) {
-            this.rzxFrameStartInstr = this.cpu.instructionCount;
-
-            if (this.rzxFrame < this.rzxPlayer.getFrameCount() - 1) {
-                this.rzxFrame++;
-            }
-
-            if (this.rzxFrame >= this.rzxPlayer.getFrameCount()) {
-                this.rzxStop();
-                if (this.onRZXEnd) this.onRZXEnd();
-            }
-        }
 
         return tstatesPerFrame;
     }
 
-    /**
-     * Render the current frame and return the screen buffer
-     * Call after runFrameHeadless() to get the final screen state
-     * @returns {Uint8ClampedArray} RGBA pixel data
-     */
-    renderAndCaptureScreen() {
-        // Frame already rendered by runFrameHeadless() - just return the buffer
-        return this.ula.frameBuffer;
-    }
 
     /**
      * Get the current screen dimensions
@@ -2452,799 +2012,12 @@ export class Spectrum {
         return this.ula.getDimensions();
     }
 
-    // ========== Overlay Drawing ==========
-
-    drawOverlay() {
-        // Note: borderOnly is set in renderToScreen() before renderFrame() is called
-        switch (this.overlayMode) {
-            case 'grid':
-                this.drawGrid();
-                break;
-            case 'box':
-                this.drawBoxOverlay();
-                break;
-            case 'screen':
-                this.drawScreenModeOverlay();
-                break;
-            case 'reveal':
-                this.drawRevealOverlay();
-                break;
-            case 'beam':
-                // Beam mode: grayscaled previous frame (paper+border), colored current (paper+border)
-                this.drawBeamOverlay(false);
-                break;
-            case 'beamscreen':
-                // BeamScreen mode: grayscaled previous frame (border only), colored current (border only)
-                this.drawBeamOverlay(true);
-                break;
-            case 'noattr':
-                // No Attr mode: monochrome display using only colors 0 and 7
-                this.drawNoAttrOverlay();
-                break;
-            case 'nobitmap':
-                // No Bitmap mode: 8x8 cells with diagonal crosses using ink/paper colors
-                this.drawNoBitmapOverlay();
-                break;
-            case 'none':
-            default:
-                // Clear overlay canvas
-                if (this.overlayCtx) {
-                    this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-                }
-                break;
-        }
-    }
-
-    // Decode ZX Spectrum keyboard port read to key names
-    decodeKeyboardInput(port, value) {
-        // Keyboard matrix - high byte of port selects row
-        const rows = {
-            0xFE: ['Shift', 'Z', 'X', 'C', 'V'],
-            0xFD: ['A', 'S', 'D', 'F', 'G'],
-            0xFB: ['Q', 'W', 'E', 'R', 'T'],
-            0xF7: ['1', '2', '3', '4', '5'],
-            0xEF: ['0', '9', '8', '7', '6'],
-            0xDF: ['P', 'O', 'I', 'U', 'Y'],
-            0xBF: ['Enter', 'L', 'K', 'J', 'H'],
-            0x7F: ['Space', 'Sym', 'M', 'N', 'B']
-        };
-
-        const highByte = (port >> 8) & 0xFF;
-        const keys = [];
-
-        // Check each row that's selected (active low in high byte)
-        for (const [rowMask, rowKeys] of Object.entries(rows)) {
-            const mask = parseInt(rowMask);
-            // If this row is selected (bit is 0)
-            if ((highByte & mask) !== mask) {
-                // Check bits 0-4 for pressed keys (0 = pressed)
-                for (let bit = 0; bit < 5; bit++) {
-                    if ((value & (1 << bit)) === 0) {
-                        keys.push(rowKeys[bit]);
-                    }
-                }
-            }
-        }
-
-        return keys;
-    }
-
-    drawBoxOverlay() {
-        if (!this.overlayCtx) return;
-        const ctx = this.overlayCtx;
-        const dims = this.ula.getDimensions();
-        const zoom = this.zoom;
-
-        // Clear overlay canvas
-        ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-
-        // Scale coordinates by zoom
-        const borderTop = dims.borderTop * zoom;
-        const borderLeft = dims.borderLeft * zoom;
-        const screenWidth = dims.screenWidth * zoom;
-        const screenHeight = dims.screenHeight * zoom;
-
-        // Draw rectangle around screen area (1px line regardless of zoom)
-        ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(borderLeft + 0.5, borderTop + 0.5, screenWidth - 1, screenHeight - 1);
-    }
-
-    drawScreenModeOverlay() {
-        if (!this.overlayCtx) return;
-        const ctx = this.overlayCtx;
-        const dims = this.ula.getDimensions();
-        const zoom = this.zoom;
-
-        // Clear overlay canvas
-        ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-
-        // Scale coordinates by zoom
-        const borderTop = dims.borderTop * zoom;
-        const borderLeft = dims.borderLeft * zoom;
-        const screenWidth = dims.screenWidth * zoom;
-        const screenHeight = dims.screenHeight * zoom;
-
-        // Screen mode: border is already extended into paper area by main canvas
-        // Just draw the grid overlay
-
-        // Draw grid inside the paper area (cyan, every 8 pixels)
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-        ctx.lineWidth = 1;
-
-        for (let row = 0; row <= dims.screenHeight; row += 8) {
-            const y = Math.floor((dims.borderTop + row) * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(borderLeft, y);
-            ctx.lineTo(borderLeft + screenWidth, y);
-            ctx.stroke();
-        }
-
-        for (let col = 0; col <= dims.screenWidth; col += 8) {
-            const x = Math.floor((dims.borderLeft + col) * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(x, borderTop);
-            ctx.lineTo(x, borderTop + screenHeight);
-            ctx.stroke();
-        }
-
-        // Draw thin yellow rectangle around paper area
-        ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(borderLeft + 0.5, borderTop + 0.5, screenWidth - 1, screenHeight - 1);
-    }
-
-    drawRevealOverlay() {
-        // Reveal mode: main canvas shows border-only (borderOnly=true), overlay draws
-        // the normal screen picture (paper area) semi-transparently on top so you can
-        // see border effects underneath the screen content.
-        if (!this.overlayCtx) return;
-        const ctx = this.overlayCtx;
-        const dims = this.ula.getDimensions();
-        const zoom = this.zoom;
-
-        // Clear overlay canvas
-        ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-
-        const borderTop = dims.borderTop * zoom;
-        const borderLeft = dims.borderLeft * zoom;
-        const screenWidth = dims.screenWidth * zoom;
-        const screenHeight = dims.screenHeight * zoom;
-
-        // Render the normal screen content (bitmaps + attributes) into a temp canvas
-        const screen = this.ula.memory.getScreenBase();
-        const screenRam = screen.ram;
-        const pal = this.ula.palette;
-        const ulaplus = this.ula.ulaplus;
-        const ulaPlusActive = ulaplus && ulaplus.enabled && ulaplus.paletteEnabled;
-        const flashActive = this.ula.flashState;
-
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = dims.width;
-        tempCanvas.height = dims.height;
-        const tempCtx = tempCanvas.getContext('2d');
-        const tempImageData = tempCtx.createImageData(dims.width, dims.height);
-        const data = tempImageData.data;
-
-        for (let y = 0; y < 192; y++) {
-            const third = Math.floor(y / 64);
-            const lineInThird = y & 0x07;
-            const charRow = Math.floor((y & 0x38) / 8);
-            const pixelAddr = (third << 11) | (lineInThird << 8) | (charRow << 5);
-            const attrAddr = 0x1800 + Math.floor(y / 8) * 32;
-            const screenY = y + dims.borderTop;
-
-            for (let col = 0; col < 32; col++) {
-                const pixelByte = screenRam[pixelAddr + col];
-                const attr = screenRam[attrAddr + col];
-
-                let inkR, inkG, inkB, paperR, paperG, paperB;
-                if (ulaPlusActive) {
-                    const clut = ((attr >> 6) & 0x03) << 4;
-                    const inkIdx = clut + (attr & 0x07);
-                    const paperIdx = clut + 8 + ((attr >> 3) & 0x07);
-                    // Decode GRB 332 palette entries to RGB
-                    const inkGrb = ulaplus.palette[inkIdx];
-                    const paperGrb = ulaplus.palette[paperIdx];
-                    const ig3 = (inkGrb >> 5) & 7, ir3 = (inkGrb >> 2) & 7, ib2 = inkGrb & 3;
-                    inkR = (ir3 << 5) | (ir3 << 2) | (ir3 >> 1);
-                    inkG = (ig3 << 5) | (ig3 << 2) | (ig3 >> 1);
-                    inkB = (ib2 << 6) | (ib2 << 4) | (ib2 << 2) | ib2;
-                    const pg3 = (paperGrb >> 5) & 7, pr3 = (paperGrb >> 2) & 7, pb2 = paperGrb & 3;
-                    paperR = (pr3 << 5) | (pr3 << 2) | (pr3 >> 1);
-                    paperG = (pg3 << 5) | (pg3 << 2) | (pg3 >> 1);
-                    paperB = (pb2 << 6) | (pb2 << 4) | (pb2 << 2) | pb2;
-                } else {
-                    let ink = attr & 0x07;
-                    let paper = (attr >> 3) & 0x07;
-                    const bright = (attr & 0x40) ? 8 : 0;
-                    if ((attr & 0x80) && flashActive) {
-                        const tmp = ink; ink = paper; paper = tmp;
-                    }
-                    const inkRgb = pal[ink + bright];
-                    const paperRgb = pal[paper + bright];
-                    inkR = inkRgb[0]; inkG = inkRgb[1]; inkB = inkRgb[2];
-                    paperR = paperRgb[0]; paperG = paperRgb[1]; paperB = paperRgb[2];
-                }
-
-                for (let bit = 7; bit >= 0; bit--) {
-                    const px = dims.borderLeft + col * 8 + (7 - bit);
-                    const idx = (screenY * dims.width + px) * 4;
-                    if (pixelByte & (1 << bit)) {
-                        data[idx] = inkR; data[idx + 1] = inkG; data[idx + 2] = inkB;
-                    } else {
-                        data[idx] = paperR; data[idx + 1] = paperG; data[idx + 2] = paperB;
-                    }
-                    data[idx + 3] = 128;  // 50% transparent — border shows through
-                }
-            }
-        }
-
-        tempCtx.putImageData(tempImageData, 0, 0);
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(tempCanvas, 0, 0, dims.width, dims.height,
-                      0, 0, dims.width * zoom, dims.height * zoom);
-
-        // Draw border around screen area for clarity
-        ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(borderLeft + 0.5, borderTop + 0.5, screenWidth - 1, screenHeight - 1);
-    }
-
-    drawGrid() {
-        if (!this.overlayCtx) return;
-        const ctx = this.overlayCtx;
-        const dims = this.ula.getDimensions();
-        const zoom = this.zoom;
-
-        // Clear overlay canvas
-        ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-
-        // Scale all coordinates by zoom
-        const borderTop = dims.borderTop * zoom;
-        const borderLeft = dims.borderLeft * zoom;
-        const screenWidth = dims.screenWidth * zoom;
-        const screenHeight = dims.screenHeight * zoom;
-        const totalWidth = dims.width * zoom;
-        const totalHeight = dims.height * zoom;
-        
-        // Draw border grid (magenta, every 8 pixels) - complete grid in all border areas
-        ctx.strokeStyle = 'rgba(255, 0, 255, 0.4)';
-        ctx.lineWidth = 1;
-        
-        // Top border area: full grid
-        for (let row = 0; row <= dims.borderTop; row += 8) {
-            const y = Math.floor(row * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(totalWidth, y);
-            ctx.stroke();
-        }
-        for (let col = 0; col <= dims.width; col += 8) {
-            const x = Math.floor(col * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, borderTop);
-            ctx.stroke();
-        }
-        
-        // Bottom border area: full grid
-        for (let row = dims.borderTop + dims.screenHeight; row <= dims.height; row += 8) {
-            const y = Math.floor(row * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(totalWidth, y);
-            ctx.stroke();
-        }
-        for (let col = 0; col <= dims.width; col += 8) {
-            const x = Math.floor(col * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(x, borderTop + screenHeight);
-            ctx.lineTo(x, totalHeight);
-            ctx.stroke();
-        }
-        
-        // Left border area (middle section): full grid
-        for (let row = dims.borderTop; row <= dims.borderTop + dims.screenHeight; row += 8) {
-            const y = Math.floor(row * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(borderLeft, y);
-            ctx.stroke();
-        }
-        for (let col = 0; col <= dims.borderLeft; col += 8) {
-            const x = Math.floor(col * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(x, borderTop);
-            ctx.lineTo(x, borderTop + screenHeight);
-            ctx.stroke();
-        }
-
-        // Right border area (middle section): full grid
-        for (let row = dims.borderTop; row <= dims.borderTop + dims.screenHeight; row += 8) {
-            const y = Math.floor(row * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(borderLeft + screenWidth, y);
-            ctx.lineTo(totalWidth, y);
-            ctx.stroke();
-        }
-        for (let col = dims.borderLeft + dims.screenWidth; col <= dims.width; col += 8) {
-            const x = Math.floor(col * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(x, borderTop);
-            ctx.lineTo(x, borderTop + screenHeight);
-            ctx.stroke();
-        }
-        
-        // Draw screen grid (gray)
-        ctx.strokeStyle = 'rgba(128, 128, 128, 0.5)';
-        ctx.lineWidth = 1;
-        const cellSize = 8 * zoom;
-
-        // Draw vertical lines (every 8 pixels = 1 character column)
-        for (let col = 0; col <= 32; col++) {
-            const x = Math.floor(borderLeft + col * cellSize) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(x, borderTop);
-            ctx.lineTo(x, borderTop + screenHeight);
-            ctx.stroke();
-        }
-
-        // Draw horizontal lines (every 8 pixels = 1 character row)
-        for (let row = 0; row <= 24; row++) {
-            const y = Math.floor(borderTop + row * cellSize) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(borderLeft, y);
-            ctx.lineTo(borderLeft + screenWidth, y);
-            ctx.stroke();
-        }
-
-        // Draw thirds dividers (horizontal lines at 64 and 128 pixels) - extended to borders
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.7)';  // Cyan
-        ctx.lineWidth = 1;
-        for (let third = 1; third < 3; third++) {
-            const y = Math.floor(borderTop + third * 64 * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(0, y);  // Start from left edge
-            ctx.lineTo(totalWidth, y);  // End at right edge
-            ctx.stroke();
-        }
-
-        // Draw quarter dividers (vertical lines at 64, 128, 192 pixels) - extended to borders
-        for (let quarter = 1; quarter < 4; quarter++) {
-            const x = Math.floor(borderLeft + quarter * 64 * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(x, 0);  // Start from top edge
-            ctx.lineTo(x, totalHeight);  // End at bottom edge
-            ctx.stroke();
-        }
-        
-        // Draw numbers using small bitmap digits (scaled by zoom)
-        const drawDigit = (x, y, digit, color) => {
-            ctx.fillStyle = color;
-            // 3x5 pixel digits, scaled by zoom
-            const patterns = {
-                '0': [0b111, 0b101, 0b101, 0b101, 0b111],
-                '1': [0b010, 0b110, 0b010, 0b010, 0b111],
-                '2': [0b111, 0b001, 0b111, 0b100, 0b111],
-                '3': [0b111, 0b001, 0b111, 0b001, 0b111],
-                '4': [0b101, 0b101, 0b111, 0b001, 0b001],
-                '5': [0b111, 0b100, 0b111, 0b001, 0b111],
-                '6': [0b111, 0b100, 0b111, 0b101, 0b111],
-                '7': [0b111, 0b001, 0b001, 0b001, 0b001],
-                '8': [0b111, 0b101, 0b111, 0b101, 0b111],
-                '9': [0b111, 0b101, 0b111, 0b001, 0b111],
-            };
-            const p = patterns[digit] || patterns['0'];
-            for (let py = 0; py < 5; py++) {
-                for (let px = 0; px < 3; px++) {
-                    if (p[py] & (4 >> px)) {
-                        ctx.fillRect(x + px * zoom, y + py * zoom, zoom, zoom);
-                    }
-                }
-            }
-        };
-
-        const drawNumber = (x, y, num, color) => {
-            const str = num.toString();
-            for (let i = 0; i < str.length; i++) {
-                drawDigit(x + i * 4 * zoom, y, str[i], color);
-            }
-        };
-
-        // Draw row numbers on left border (yellow)
-        for (let row = 0; row < 24; row++) {
-            const y = borderTop + row * cellSize + zoom;
-            drawNumber(borderLeft - 10 * zoom, y, row, '#FFFF00');
-        }
-
-        // Draw column numbers on top border (every 4th)
-        for (let col = 0; col < 32; col += 4) {
-            const x = borderLeft + col * cellSize + zoom;
-            drawNumber(x, borderTop - 7 * zoom, col, '#FFFF00');
-        }
-
-        // Draw scanline numbers on right (cyan)
-        for (let line = 0; line < 192; line += 8) {
-            const y = borderTop + line * zoom + zoom;
-            drawNumber(borderLeft + screenWidth + 2 * zoom, y, line, '#00FFFF');
-        }
-
-        // Draw 256x192 boundary lines extending into border areas (yellow)
-        ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-        ctx.lineWidth = 1;
-
-        // Horizontal boundary lines - extend into left and right borders
-        // Top edge of 256x192 area
-        const topY = Math.floor(borderTop) + 0.5;
-        ctx.beginPath();
-        ctx.moveTo(0, topY);
-        ctx.lineTo(borderLeft, topY);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(borderLeft + screenWidth, topY);
-        ctx.lineTo(totalWidth, topY);
-        ctx.stroke();
-
-        // Bottom edge of 256x192 area
-        const bottomY = Math.floor(borderTop + screenHeight) + 0.5;
-        ctx.beginPath();
-        ctx.moveTo(0, bottomY);
-        ctx.lineTo(borderLeft, bottomY);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(borderLeft + screenWidth, bottomY);
-        ctx.lineTo(totalWidth, bottomY);
-        ctx.stroke();
-
-        // Vertical boundary lines - extend into top and bottom borders
-        // Left edge of 256x192 area
-        const leftX = Math.floor(borderLeft) + 0.5;
-        ctx.beginPath();
-        ctx.moveTo(leftX, 0);
-        ctx.lineTo(leftX, borderTop);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(leftX, borderTop + screenHeight);
-        ctx.lineTo(leftX, totalHeight);
-        ctx.stroke();
-
-        // Right edge of 256x192 area
-        const rightX = Math.floor(borderLeft + screenWidth) + 0.5;
-        ctx.beginPath();
-        ctx.moveTo(rightX, 0);
-        ctx.lineTo(rightX, borderTop);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(rightX, borderTop + screenHeight);
-        ctx.lineTo(rightX, totalHeight);
-        ctx.stroke();
-
-        // Draw yellow box around screen area (256x192)
-        ctx.strokeRect(borderLeft + 0.5, borderTop + 0.5, screenWidth - 1, screenHeight - 1);
-    }
-
-    // Beam visualization overlay - shows previous frame grayscaled, current progress colored
-    // borderOnlyMode=false (Beam): grayscale prev frame (paper+border), color current (paper+border)
-    // borderOnlyMode=true (BeamScreen): grayscale prev frame (border only), color current (border only)
-    drawBeamOverlay(borderOnlyMode) {
-        if (!this.overlayCtx) return;
-        const ctx = this.overlayCtx;
-        const dims = this.ula.getDimensions();
-        const zoom = this.zoom;
-
-        // Clear overlay canvas
-        ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-
-        // Calculate current beam position from tStates
-        const tStates = this.cpu.tStates;
-        const tstatesPerLine = this.ula.TSTATES_PER_LINE;
-        const tstatesPerFrame = this.ula.TSTATES_PER_FRAME;
-
-        // Current frame line and position within line
-        const currentFrameLine = Math.floor(tStates / tstatesPerLine);
-        const posInLine = tStates % tstatesPerLine;
-
-        // Convert frame line to visible line using ULA's calculation
-        const firstVisibleFrameLine = this.ula.FIRST_SCREEN_LINE - this.ula.BORDER_TOP;
-        const lastVisibleFrameLine = this.ula.FIRST_SCREEN_LINE + this.ula.SCREEN_HEIGHT + this.ula.BORDER_BOTTOM - 1;
-
-        // Calculate beam position in visible coordinates
-        let beamVisY = currentFrameLine - firstVisibleFrameLine;
-
-        // Calculate X position: convert T-state position to pixel position
-        // Using the same logic as renderBorderPixels
-        const lineStartTstate = this.ula.calculateLineStartTstate ?
-            this.ula.calculateLineStartTstate(Math.max(0, beamVisY)) : 0;
-        const currentTstate = currentFrameLine * tstatesPerLine + posInLine;
-        const pixelX = Math.floor((currentTstate - lineStartTstate) * 2);
-
-        // Clamp beam position to visible area
-        const beamX = Math.max(0, Math.min(dims.width - 1, pixelX));
-        const beamY = Math.max(0, Math.min(dims.height - 1, beamVisY));
-
-        // Scale coordinates by zoom
-        const borderTop = dims.borderTop * zoom;
-        const borderLeft = dims.borderLeft * zoom;
-        const screenWidth = dims.screenWidth * zoom;
-        const screenHeight = dims.screenHeight * zoom;
-        const totalWidth = dims.width * zoom;
-        const totalHeight = dims.height * zoom;
-
-        // Draw previous frame in grayscale
-        if (this.previousFrameBuffer) {
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = dims.width;
-            tempCanvas.height = dims.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            const tempImageData = tempCtx.createImageData(dims.width, dims.height);
-
-            // Convert entire previous frame to darkened grayscale
-            // Both BeamScreen and Beam: grayscale everything (paper area has border colors in borderOnlyMode)
-            // The previousFrameBuffer already contains border colors extended into paper area
-            for (let i = 0; i < this.previousFrameBuffer.length; i += 4) {
-                // Calculate grayscale and darken by 50% for better contrast with current frame
-                const gray = Math.round(
-                    (this.previousFrameBuffer[i] * 0.299 +
-                     this.previousFrameBuffer[i + 1] * 0.587 +
-                     this.previousFrameBuffer[i + 2] * 0.114) * 0.5
-                );
-                tempImageData.data[i] = gray;
-                tempImageData.data[i + 1] = gray;
-                tempImageData.data[i + 2] = gray;
-                tempImageData.data[i + 3] = 255;  // Fully opaque
-            }
-            tempCtx.putImageData(tempImageData, 0, 0);
-
-            // Draw grayscale previous frame
-            ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(tempCanvas, 0, 0, dims.width, dims.height,
-                          0, 0, totalWidth, totalHeight);
-        }
-
-        // Draw current frame progress (colored) - lines that have been rendered
-        // In running mode (beamVisY >= dims.height), draw entire frame
-        const frameComplete = beamVisY >= dims.height;
-        if (beamVisY >= 0 || frameComplete) {
-            // Get current partial frame from ULA
-            const currentFrame = this.ula.frameBuffer;
-            if (currentFrame) {
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = dims.width;
-                tempCanvas.height = dims.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                const tempImageData = tempCtx.createImageData(dims.width, dims.height);
-
-                // Determine how much to draw
-                const maxDrawY = frameComplete ? dims.height - 1 : Math.min(beamY, dims.height - 1);
-                const maxDrawX = frameComplete ? dims.width : (beamX + 1);
-
-                // Copy already-rendered lines in color
-                for (let y = 0; y <= maxDrawY; y++) {
-                    for (let x = 0; x < dims.width; x++) {
-                        // For the current beam line (not complete), only draw up to beam X position
-                        if (!frameComplete && y === beamY && x >= maxDrawX) break;
-
-                        const idx = (y * dims.width + x) * 4;
-                        const isScreen = x >= dims.borderLeft && x < dims.borderLeft + dims.screenWidth &&
-                                         y >= dims.borderTop && y < dims.borderTop + dims.screenHeight;
-
-                        // In borderOnly mode, skip screen area
-                        if (borderOnlyMode && isScreen) continue;
-
-                        tempImageData.data[idx] = currentFrame[idx];
-                        tempImageData.data[idx + 1] = currentFrame[idx + 1];
-                        tempImageData.data[idx + 2] = currentFrame[idx + 2];
-                        tempImageData.data[idx + 3] = 255;
-                    }
-                }
-                tempCtx.putImageData(tempImageData, 0, 0);
-
-                // Draw colored current progress
-                ctx.drawImage(tempCanvas, 0, 0, dims.width, dims.height,
-                              0, 0, totalWidth, totalHeight);
-            }
-        }
-
-        // Draw grid overlay (8-pixel spacing, covers whole canvas)
-        ctx.strokeStyle = 'rgba(255, 0, 255, 0.3)';
-        ctx.lineWidth = 1;
-        for (let row = 0; row <= dims.height; row += 8) {
-            const y = Math.floor(row * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(totalWidth, y);
-            ctx.stroke();
-        }
-        for (let col = 0; col <= dims.width; col += 8) {
-            const x = Math.floor(col * zoom) + 0.5;
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, totalHeight);
-            ctx.stroke();
-        }
-
-        // Draw beam position marker (cyan crosshair)
-        if (beamVisY >= 0 && beamVisY < dims.height && beamX >= 0 && beamX < dims.width) {
-            const bx = beamX * zoom;
-            const by = beamY * zoom;
-
-            ctx.strokeStyle = '#00FFFF';
-            ctx.lineWidth = 1;
-
-            // Horizontal line through beam
-            ctx.beginPath();
-            ctx.moveTo(0, by + 0.5);
-            ctx.lineTo(totalWidth, by + 0.5);
-            ctx.stroke();
-
-            // Vertical line through beam
-            ctx.beginPath();
-            ctx.moveTo(bx + 0.5, 0);
-            ctx.lineTo(bx + 0.5, totalHeight);
-            ctx.stroke();
-
-            // Beam dot
-            ctx.fillStyle = '#FF0000';
-            ctx.beginPath();
-            ctx.arc(bx, by, 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // Draw beam info text
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = `${12 * zoom}px monospace`;
-        ctx.fillText(`T:${tStates} Line:${currentFrameLine} Pos:${posInLine}`, 4, 14 * zoom);
-        ctx.fillText(`VisY:${beamY} X:${beamX}`, 4, 28 * zoom);
-
-        // Draw screen area boundary (yellow box)
-        ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(borderLeft + 0.5, borderTop + 0.5, screenWidth - 1, screenHeight - 1);
-    }
-
-    drawNoAttrOverlay() {
-        // No Attr mode: Show monochrome picture using only colors 0 and 7 from palette
-        if (!this.overlayCtx) return;
-        const ctx = this.overlayCtx;
-        const dims = this.ula.getDimensions();
-        const zoom = this.zoom;
-        const palette = this.ula.palette;
-
-        // Get colors 0 (black) and 7 (white) from palette
-        const color0 = palette ? palette[0] : [0, 0, 0, 255];
-        const color7 = palette ? palette[7] : [205, 205, 205, 255];
-
-        // Clear overlay canvas
-        ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-
-        // Create temporary canvas at 1x scale
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = dims.width;
-        tempCanvas.height = dims.height;
-        const tempCtx = tempCanvas.getContext('2d');
-        const tempImageData = tempCtx.createImageData(dims.width, dims.height);
-
-        // Get current frame buffer
-        const frameBuffer = this.ula.frameBuffer;
-        if (!frameBuffer) return;
-
-        // Process screen area only - convert to monochrome based on luminance
-        for (let y = dims.borderTop; y < dims.borderTop + dims.screenHeight; y++) {
-            for (let x = dims.borderLeft; x < dims.borderLeft + dims.screenWidth; x++) {
-                const idx = (y * dims.width + x) * 4;
-                const r = frameBuffer[idx];
-                const g = frameBuffer[idx + 1];
-                const b = frameBuffer[idx + 2];
-
-                // Calculate luminance (using perceived brightness formula)
-                const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-
-                // Use color 7 for bright pixels (ink), color 0 for dark (paper)
-                const color = lum > 64 ? color7 : color0;
-                tempImageData.data[idx] = color[0];
-                tempImageData.data[idx + 1] = color[1];
-                tempImageData.data[idx + 2] = color[2];
-                tempImageData.data[idx + 3] = 255;
-            }
-        }
-
-        tempCtx.putImageData(tempImageData, 0, 0);
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(tempCanvas, dims.borderLeft, dims.borderTop, dims.screenWidth, dims.screenHeight,
-                      dims.borderLeft * zoom, dims.borderTop * zoom, dims.screenWidth * zoom, dims.screenHeight * zoom);
-    }
-
-    drawNoBitmapOverlay() {
-        // No Bitmap mode: each 8x8 cell shows paper color with a diagonal
-        // ink-colored X cross so you can see where ink differs from paper.
-        // Per-cell color sampling for multicolor support.
-        if (!this.overlayCtx) return;
-        const ctx = this.overlayCtx;
-        const dims = this.ula.getDimensions();
-        const zoom = this.zoom;
-        const frameBuffer = this.ula.frameBuffer;
-        if (!frameBuffer) return;
-
-        // Clear overlay canvas
-        ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-
-        // Create temporary canvas at 1x scale
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = dims.width;
-        tempCanvas.height = dims.height;
-        const tempCtx = tempCanvas.getContext('2d');
-        const tempImageData = tempCtx.createImageData(dims.width, dims.height);
-        const data = tempImageData.data;
-
-        // Copy border from frame buffer
-        for (let y = 0; y < dims.height; y++) {
-            for (let x = 0; x < dims.width; x++) {
-                const isScreen = x >= dims.borderLeft && x < dims.borderLeft + dims.screenWidth &&
-                                 y >= dims.borderTop && y < dims.borderTop + dims.screenHeight;
-                if (!isScreen) {
-                    const idx = (y * dims.width + x) * 4;
-                    data[idx] = frameBuffer[idx];
-                    data[idx + 1] = frameBuffer[idx + 1];
-                    data[idx + 2] = frameBuffer[idx + 2];
-                    data[idx + 3] = 255;
-                }
-            }
-        }
-
-        // For each 8x8 cell, detect ink/paper from the top scanline of the cell,
-        // then fill the entire cell with paper + centered cross in ink.
-        for (let charRow = 0; charRow < 24; charRow++) {
-            for (let charCol = 0; charCol < 32; charCol++) {
-                const cellX = dims.borderLeft + charCol * 8;
-                const cellY = dims.borderTop + charRow * 8;
-
-                // Sample all 64 pixels to find paper and ink colors
-                const colors = new Map();
-                for (let ly = 0; ly < 8; ly++) {
-                    for (let px = 0; px < 8; px++) {
-                        const idx = ((cellY + ly) * dims.width + cellX + px) * 4;
-                        const key = (frameBuffer[idx] << 16) | (frameBuffer[idx + 1] << 8) | frameBuffer[idx + 2];
-                        colors.set(key, (colors.get(key) || 0) + 1);
-                    }
-                }
-
-                const sorted = [...colors.entries()].sort((a, b) => b[1] - a[1]);
-                const paperKey = sorted[0] ? sorted[0][0] : 0;
-                const inkKey = sorted[1] ? sorted[1][0] : paperKey;
-                const paperR = (paperKey >> 16) & 0xFF, paperG = (paperKey >> 8) & 0xFF, paperB = paperKey & 0xFF;
-                const inkR = (inkKey >> 16) & 0xFF, inkG = (inkKey >> 8) & 0xFF, inkB = inkKey & 0xFF;
-                const sameColor = (paperKey === inkKey);
-
-                // Fill entire cell with paper
-                for (let ly = 0; ly < 8; ly++) {
-                    for (let px = 0; px < 8; px++) {
-                        const idx = ((cellY + ly) * dims.width + cellX + px) * 4;
-                        data[idx] = paperR;
-                        data[idx + 1] = paperG;
-                        data[idx + 2] = paperB;
-                        data[idx + 3] = 255;
-                    }
-                }
-
-                // Draw diagonal X cross in ink (only if ink differs from paper)
-                if (!sameColor) {
-                    for (let d = 0; d < 8; d++) {
-                        // Top-left to bottom-right diagonal
-                        const idx1 = ((cellY + d) * dims.width + cellX + d) * 4;
-                        data[idx1] = inkR; data[idx1 + 1] = inkG; data[idx1 + 2] = inkB;
-                        // Top-right to bottom-left diagonal
-                        const idx2 = ((cellY + d) * dims.width + cellX + 7 - d) * 4;
-                        data[idx2] = inkR; data[idx2 + 1] = inkG; data[idx2 + 2] = inkB;
-                    }
-                }
-            }
-        }
-
-        tempCtx.putImageData(tempImageData, 0, 0);
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(tempCanvas, 0, 0, dims.width, dims.height,
-                      0, 0, dims.width * zoom, dims.height * zoom);
+    /**
+     * Get the current frame buffer (stable reference to ULA's internal buffer).
+     * @returns {Uint8ClampedArray} RGBA pixel data
+     */
+    getFrameBuffer() {
+        return this.ula.frameBuffer;
     }
 
     // ========== Start/Stop/Speed Control ==========
@@ -3258,7 +2031,7 @@ export class Spectrum {
             this._bpTStatesResetPending = false;
         }
 
-        // If forcing, ensure we're stopped first to clear any stale timers
+        // If forcing, ensure we're stopped first
         if (force && this.running) {
             this.stop();
         }
@@ -3268,145 +2041,34 @@ export class Spectrum {
         }
 
         this.running = true;
-        this.lastFrameTime = performance.now();
-        this.lastRafTime = null;  // Reset for accurate frame timing
         this.frameCount = 0;
 
-        // Register keyboard handlers once
-        if (!this.keyboardHandlersRegistered) {
-            document.addEventListener('keydown', this.boundKeyDown);
-            document.addEventListener('keyup', this.boundKeyUp);
-            this.keyboardHandlersRegistered = true;
-        }
-
-        this.scheduleNextFrame();
+        if (this.onStarted) this.onStarted();
     }
-    
-    scheduleNextFrame() {
-        if (!this.running) return;
 
-        if (this.speed === 0) {
-            // Max speed - use requestAnimationFrame, run multiple frames
-            this.rafId = requestAnimationFrame(() => {
-                try {
-                    const startTime = performance.now();
-                    // Run frames for up to 16ms (one display frame)
-                    while (performance.now() - startTime < 16 && this.running) {
-                        this.runFrame();
-                    }
-                    this.updateFps();
-                    this.scheduleNextFrame();
-                } catch (e) {
-                    console.error('Error in runFrame:', e);
-                    this.running = false;
-                    if (this.onError) this.onError(e);
-                }
-            });
-        } else if (this.speed >= 100) {
-            // Normal or fast - use requestAnimationFrame with time tracking
-            // Real Spectrum: 50.08 FPS (69888 T-states at 3.5MHz)
-            const targetFrameTime = 1000 / 50.08 * (100 / this.speed);
-
-            this.rafId = requestAnimationFrame((timestamp) => {
-                try {
-                    if (!this.lastRafTime) this.lastRafTime = timestamp;
-
-                    // Calculate how many frames we should have run
-                    const elapsed = timestamp - this.lastRafTime;
-                    const framesToRun = Math.floor(elapsed / targetFrameTime);
-
-                    if (framesToRun > 0) {
-                        // Run the appropriate number of frames (cap at 4 to prevent spiral)
-                        const actualFrames = Math.min(framesToRun, 4);
-                        for (let i = 0; i < actualFrames && this.running; i++) {
-                            this.runFrame();
-                        }
-                        this.lastRafTime = timestamp - (elapsed % targetFrameTime);
-                    }
-
-                    this.updateFps();
-                    this.scheduleNextFrame();
-                } catch (e) {
-                    console.error('Error in runFrame:', e);
-                    this.running = false;
-                    if (this.onError) this.onError(e);
-                }
-            });
-        } else {
-            // Slow - increase interval
-            const interval = Math.round(20 * (100 / this.speed));
-            this.frameInterval = setTimeout(() => {
-                try {
-                    this.runFrame();
-                    this.updateFps();
-                    this.scheduleNextFrame();
-                } catch (e) {
-                    console.error('Error in runFrame:', e);
-                    this.running = false;
-                    if (this.onError) this.onError(e);
-                }
-            }, interval);
-        }
-    }
-    
-    updateFps() {
-        const now = performance.now();
-        if (now - this.lastFrameTime >= 1000) {
-            this.actualFps = Math.round(this.frameCount * 1000 / (now - this.lastFrameTime));
-            this.frameCount = 0;
-            this.lastFrameTime = now;
-        }
-    }
-    
     stop() {
         if (!this.running) return;
         this.running = false;
-        if (this.frameInterval) {
-            clearTimeout(this.frameInterval);
-            this.frameInterval = null;
-        }
-        if (this.rafId) {
-            cancelAnimationFrame(this.rafId);
-            this.rafId = null;
-        }
-        // Keep keyboard handlers registered - user may type while paused
+        if (this.onStopped) this.onStopped();
     }
-    
+
     setSpeed(speed) {
         const wasHighSpeed = this.speed > 200;
         this.speed = speed;
-        this.lastRafTime = null;  // Reset for new timing
-
-        // Suspend audio at high speeds (> 200% or max speed)
-        if (this.audio && this.audio.context) {
-            if (speed === 0 || speed > 200) {
-                this.audio.context.suspend();
-            } else if (this.audio.enabled) {
-                this.audio.context.resume();
-            }
-        }
 
         // Suppress tape audio briefly when returning from high speed
-        // This prevents hearing unexpected loading sounds when game is loaded at max speed
         if (wasHighSpeed && speed > 0 && speed <= 200) {
-            this._suppressTapeAudioUntil = Date.now() + 1000;  // 1 second grace period
+            this._suppressTapeAudioFrames = 50;  // ~1 second at 50Hz
         }
 
-        // Restart timing if running
-        if (this.running) {
-            if (this.frameInterval) {
-                clearTimeout(this.frameInterval);
-                this.frameInterval = null;
-            }
-            if (this.rafId) {
-                cancelAnimationFrame(this.rafId);
-                this.rafId = null;
-            }
-            this.scheduleNextFrame();
-        }
+        if (this.onSpeedChanged) this.onSpeedChanged(speed);
     }
-    
+
     toggle() { this.running ? this.stop() : this.start(); }
+
+    getFps() {
+        return this._getFps ? this._getFps() : 0;
+    }
 
     // Beta Disk automatic ROM paging
     // Update cached flag for Beta Disk paging (call when conditions change)
@@ -3582,17 +2244,12 @@ export class Spectrum {
     }
     
     // Helper to render current state without executing CPU
+    // Display flags (isBeamMode, isBorderOnly) provided by overlay renderer via getDisplayFlags callback
     renderToScreen() {
-        // Set borderOnly BEFORE rendering so renderFrame uses correct mode
-        const borderOnly = this.overlayMode === 'screen' || this.overlayMode === 'reveal' || this.overlayMode === 'beamscreen';
-        this.ula.borderOnly = borderOnly;
+        const flags = this.getDisplayFlags ? this.getDisplayFlags() : { isBorderOnly: false, isBeamMode: false };
 
-        // In beam modes, preserve the scanline-by-scanline rendered frame buffer
-        // (don't re-render entire screen which would lose per-scanline attribute changes)
-        const isBeamMode = this.overlayMode === 'beam' || this.overlayMode === 'beamscreen';
         let frameBuffer;
-
-        if (isBeamMode) {
+        if (flags.isBeamMode) {
             // Render scanlines up to current T-state position for accurate beam display
             this.ula.updateScanline(this.cpu.tStates);
             frameBuffer = this.ula.frameBuffer;
@@ -3602,58 +2259,7 @@ export class Spectrum {
             frameBuffer = this.ula.renderFrame();
         }
 
-        // Handle border-only modes: replace paper area with border color
-        const borderOnlyMode = this.overlayMode === 'screen' || this.overlayMode === 'reveal' || this.overlayMode === 'beamscreen';
-        if (borderOnlyMode) {
-            const dims = this.ula.getDimensions();
-            const changes = this.ula.borderChanges;
-            const palette = this.ula.palette;
-
-            for (let y = dims.borderTop; y < dims.borderTop + dims.screenHeight; y++) {
-                const lineStartTstate = this.ula.calculateLineStartTstate(y);
-                let currentColor = (changes && changes.length > 0) ? changes[0].color : this.ula.borderColor;
-                let changeIdx = 0;
-
-                if (changes && changes.length > 0) {
-                    for (let i = 0; i < changes.length; i++) {
-                        if (changes[i].tState <= lineStartTstate) {
-                            currentColor = changes[i].color;
-                            changeIdx = i + 1;
-                        } else {
-                            break;
-                        }
-                    }
-                }
-
-                for (let x = dims.borderLeft; x < dims.borderLeft + dims.screenWidth; x++) {
-                    const pixelTstate = lineStartTstate + Math.floor(x / 2);
-                    if (changes) {
-                        while (changeIdx < changes.length && changes[changeIdx].tState <= pixelTstate) {
-                            currentColor = changes[changeIdx].color;
-                            changeIdx++;
-                        }
-                    }
-                    const colorIdx = currentColor & 7;
-                    const rgb = palette ? palette[colorIdx] : [0, 0, 0, 255];
-                    const idx = (y * dims.width + x) * 4;
-                    frameBuffer[idx] = rgb[0];
-                    frameBuffer[idx + 1] = rgb[1];
-                    frameBuffer[idx + 2] = rgb[2];
-                    frameBuffer[idx + 3] = 255;
-                }
-            }
-        }
-
-        // Save frame for beam visualization modes AFTER border-only modification
-        // so previousFrameBuffer includes border lines in paper area
-        // But don't save in beam mode - we want to keep the last complete frame
-        if (!isBeamMode) {
-            this.savePreviousFrame(frameBuffer);
-        }
-
-        this.imageData.data.set(frameBuffer);
-        this.ctx.putImageData(this.imageData, 0, 0);
-        this.drawOverlay();
+        if (this.onRender) this.onRender(frameBuffer);
     }
 
     // Execute until past current instruction (skip over CALL/RST)
@@ -5199,150 +3805,6 @@ export class Spectrum {
 
     // ========== End Unified Trigger System ==========
 
-    // ========== Keyboard Handling ==========
-
-    handleKeyDown(e) {
-        // Don't capture keys when typing in input fields or contentEditable
-        const tag = e.target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-            return;
-        }
-        if (e.target.isContentEditable) {
-            return;
-        }
-        // Also check if any input has focus
-        const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) {
-            return;
-        }
-        if (active && active.isContentEditable) {
-            return;
-        }
-        
-        // Ignore real keyboard during RZX playback
-        if (this.rzxPlaying) {
-            return;
-        }
-
-        // Prevent browser shortcuts when emulator should capture them
-        // Alt+key combinations for ZX Spectrum Symbol Shift
-        if (e.altKey && !e.ctrlKey && !e.metaKey) {
-            const key = e.key.toLowerCase();
-            // Prevent Alt+key browser shortcuts for Symbol Shift combinations
-            if (['p', 's', 'o', 'n', 'w', 'r', 'f', 'h', 'j', 'k', 'l', 'u', 'i', 'b', 'd', 'g', 'a', 'z', 'x', 'c', 'v', 'e', 't', 'y', 'm', 'q', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(key)) {
-                e.preventDefault();
-            }
-        }
-
-        // Check e.key first for punctuation/shifted characters
-        // This must be before joystick checks so typing { } | etc works
-        if (e.key.length === 1 && !e.key.match(/^[a-zA-Z0-9]$/)) {
-            const mapping = this.ula.getKeyMapping(e.key);
-            if (mapping) {
-                e.preventDefault();
-                this.pressedKeys.set(e.code, e.key); // Track for proper release
-                this.ula.keyDown(e.key);
-                return;
-            }
-        }
-
-        // Kempston joystick on numpad (use e.code for cross-platform consistency)
-        const kempstonBit = this.getKempstonBit(e.code);
-        if (kempstonBit !== null) {
-            e.preventDefault();
-            this.kempstonState |= kempstonBit;
-            return;
-        }
-
-        // Extended Kempston buttons: [ = C, ] = A, \ = Start (only when not typing punctuation)
-        const extBit = this.getExtendedKempstonBit(e.code);
-        if (extBit !== null && this.kempstonExtendedEnabled) {
-            e.preventDefault();
-            this.kempstonExtendedState |= (1 << extBit);
-            return;
-        }
-
-        // Use e.code for layout-independent key detection (letters, digits, special keys)
-        if (this.ula.keyMap[e.code]) {
-            e.preventDefault();
-            this.pressedKeys.set(e.code, e.code); // Track for proper release
-            this.ula.keyDown(e.code);
-        }
-    }
-
-    handleKeyUp(e) {
-        // Don't capture keys when typing in input fields or contentEditable
-        const tag = e.target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-            return;
-        }
-        if (e.target.isContentEditable) {
-            return;
-        }
-        // Also check if any input has focus
-        const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) {
-            return;
-        }
-        if (active && active.isContentEditable) {
-            return;
-        }
-
-        // Use tracked key for proper release (handles shifted chars where e.key changes on release)
-        const trackedKey = this.pressedKeys.get(e.code);
-        if (trackedKey) {
-            e.preventDefault();
-            this.ula.keyUp(trackedKey);
-            this.pressedKeys.delete(e.code);
-            return;
-        }
-
-        // Kempston joystick on numpad (use e.code for cross-platform consistency)
-        const kempstonBit = this.getKempstonBit(e.code);
-        if (kempstonBit !== null) {
-            e.preventDefault();
-            this.kempstonState &= ~kempstonBit;
-            return;
-        }
-
-        // Extended Kempston buttons: [ = C, ] = A, \ = Start
-        const extBit = this.getExtendedKempstonBit(e.code);
-        if (extBit !== null && this.kempstonExtendedEnabled) {
-            e.preventDefault();
-            this.kempstonExtendedState &= ~(1 << extBit);
-            return;
-        }
-    }
-
-    getKempstonBit(code) {
-        // Numpad mapping to Kempston joystick (using e.code for consistency)
-        // Bit 0: Right, Bit 1: Left, Bit 2: Down, Bit 3: Up, Bit 4: Fire
-        switch (code) {
-            case 'Numpad8': return 0x08; // Up
-            case 'Numpad2': return 0x04; // Down
-            case 'Numpad4': return 0x02; // Left
-            case 'Numpad6': return 0x01; // Right
-            case 'Numpad5': return 0x10; // Fire
-            case 'Numpad0': return 0x10; // Fire
-            case 'Numpad1': return 0x06; // Down+Left
-            case 'Numpad3': return 0x05; // Down+Right
-            case 'Numpad7': return 0x0a; // Up+Left
-            case 'Numpad9': return 0x09; // Up+Right
-            default:  return null;
-        }
-    }
-
-    getExtendedKempstonBit(code) {
-        // Extended Kempston buttons: [ ] \
-        // Returns the bit number (5, 6, 7) not the mask
-        switch (code) {
-            case 'BracketLeft':  return 5; // [ = C button (bit 5)
-            case 'BracketRight': return 6; // ] = A button (bit 6)
-            case 'Backslash':    return 7; // \ = Start button (bit 7)
-            default:  return null;
-        }
-    }
-
     // Kempston Mouse update methods
     updateMousePosition(dx, dy) {
         // Clamp movement to prevent large jumps (max ±20 per update)
@@ -5788,8 +4250,7 @@ export class Spectrum {
 
             // Render current screen
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
 
             if (wasRunning) this.start();
 
@@ -5835,8 +4296,7 @@ export class Spectrum {
 
             // Render current screen
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
 
             if (wasRunning) this.start();
 
@@ -5952,8 +4412,7 @@ export class Spectrum {
             this.ula.startFrame();
             this.ula.attrInitial = null;  // Force use of current memory values
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
             if (wasRunning) this.start();
             return result;
         } catch (e) {
@@ -6018,8 +4477,7 @@ export class Spectrum {
             this.ula.attrInitial = null;  // Force use of current memory values
             // Update display
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
 
             if (wasRunning) this.start();
             return result;
@@ -6069,8 +4527,7 @@ export class Spectrum {
             this.ula.startFrame();
             this.ula.attrInitial = null;  // Force use of current memory values
             const frameBuffer = this.ula.renderFrame();
-            this.imageData.data.set(frameBuffer);
-            this.ctx.putImageData(this.imageData, 0, 0);
+            if (this.onRender) this.onRender(frameBuffer);
             if (wasRunning) this.start();
             return result;
         } catch (e) {
@@ -6401,7 +4858,7 @@ export class Spectrum {
             },
             memory: this.memory.getPagingState(),
             ula: { border: this.ula.borderColor, flash: this.ula.flashState },
-            running: this.running, fps: this.actualFps
+            running: this.running, fps: this.getFps()
         };
     }
     
@@ -6410,7 +4867,7 @@ export class Spectrum {
 
     // ========== Machine Type ==========
 
-    setMachineType(type, preserveRom = false) {
+    setMachineType(type, preserveRom = false, options = {}) {
         const wasRunning = this.running;
         if (wasRunning) this.stop();
 
@@ -6424,9 +4881,8 @@ export class Spectrum {
         const oldFullBorderMode = this.ula ? this.ula.fullBorderMode : false;
         const oldPalette = this.ula ? this.ula.palette : null;
         const oldPaletteId = this.ula ? this.ula.paletteId : null;
-        // Use persistent setting, not runtime state (which may be modified by test runner)
-        const ulaplusSetting = typeof localStorage !== 'undefined'
-            ? localStorage.getItem('zxm8_ulaplus') === 'true' : false;
+        // ULAplus enabled state — provided by host (not stored in kernel)
+        const ulaplusSetting = options.ulaplusEnabled || false;
 
         this.machineType = type;
         this.profile = getMachineProfile(type);
@@ -6601,18 +5057,7 @@ export class Spectrum {
         return JSON.stringify(this.rzxDebugLog, null, 2);
     }
 
-    // Export debug log to file
-    rzxExportDebugLog() {
-        const json = this.rzxGetDebugLog();
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'rzx_debug_log.json';
-        a.click();
-        URL.revokeObjectURL(url);
-        console.log(`Exported ${this.rzxDebugLog.length} frames to rzx_debug_log.json`);
-    }
+
 
     isRZXPlaying() {
         return this.rzxPlaying;
@@ -7023,29 +5468,6 @@ export class Spectrum {
         }
     }
 
-    /**
-     * Download recorded RZX as a file
-     * @param {string} filename - Optional filename (default: recording.rzx)
-     */
-    rzxDownloadRecording(filename = 'recording.rzx') {
-        const data = this.rzxSaveRecording();
-        if (!data) {
-            console.warn('No RZX data to download');
-            return;
-        }
-
-        const blob = new Blob([data], { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        console.log(`[RZX REC] Downloaded ${filename} (${data.length} bytes)`);
-    }
 
     /**
      * Analyze RZX file structure (for debugging)
@@ -7384,6 +5806,7 @@ export class Spectrum {
             skipRom = true,
             isDataRegion = null,
             onProgress = null,
+            onYield = null,
             maxInstructions = 100000
         } = options;
 
@@ -7405,7 +5828,7 @@ export class Spectrum {
 
         const disasm = new Disassembler(this.memory);
         let processed = 0;
-        let lastYield = Date.now();
+        let sinceLastYield = 0;
 
         while (queue.length > 0) {
             if (processed >= maxInstructions) {
@@ -7488,12 +5911,12 @@ export class Spectrum {
                     pc = (pc + result.length) & 0xFFFF;
                 }
 
-                // Yield to UI every 20ms
-                const now = Date.now();
-                if (now - lastYield >= 20) {
+                // Yield periodically (every ~1000 instructions)
+                sinceLastYield++;
+                if (sinceLastYield >= 1000) {
+                    sinceLastYield = 0;
                     if (onProgress) onProgress(processed, queue.length);
-                    await new Promise(r => setTimeout(r, 0));
-                    lastYield = Date.now();
+                    if (onYield) await onYield();
                 }
             }
         }
@@ -7505,332 +5928,7 @@ export class Spectrum {
 
     // ========== Utility ==========
 
-    getFps() { return this.actualFps; }
     isRunning() { return this.running; }
 
-    // ========== Audio ==========
-
-    /**
-     * Initialize audio system (must be called from user interaction)
-     */
-    initAudio() {
-        if (this.audio) return this.audio;
-        this.audio = new AudioManager(this.ay, this.timing);
-        return this.audio;
-    }
-
-    /**
-     * Get audio manager (may be null if not initialized)
-     */
-    getAudio() {
-        return this.audio;
-    }
 }
 
-/**
- * AudioManager - Handles Web Audio output for AY chip using AudioWorklet
- */
-class AudioManager {
-    constructor(ay, timing) {
-        this.ay = ay;
-        this.timing = timing;
-        this.context = null;
-        this.gainNode = null;
-        this.workletNode = null;
-        this.enabled = false;
-        this.volume = 0.5;
-        this.muted = false;
-
-        // Buffer for batching samples to send to worklet
-        this.sendBufferSize = 512;
-        this.sendBufferL = new Float32Array(this.sendBufferSize);
-        this.sendBufferR = new Float32Array(this.sendBufferSize);
-        this.sendBufferPos = 0;
-
-        // Timing
-        this.sampleRate = 44100;
-        this.cpuClock = timing.cpuClock || 3500000;
-        this.ayClock = ay.clockRate;
-
-        // Samples per frame at 50Hz
-        this.samplesPerFrame = Math.floor(this.sampleRate / 50);
-
-        // CPU cycles per audio sample
-        this.cyclesPerSample = this.cpuClock / this.sampleRate;
-
-        // AY cycles per CPU cycle (AY runs at ~half CPU speed)
-        this.ayPerCpu = this.ayClock / this.cpuClock;
-    }
-
-    /**
-     * Start audio output using AudioWorklet (or ScriptProcessorNode fallback)
-     */
-    async start() {
-        if (this.context) return;
-
-        try {
-            this.context = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: this.sampleRate
-            });
-
-            // Update sample rate if browser chose different
-            this.sampleRate = this.context.sampleRate;
-            this.samplesPerFrame = Math.floor(this.sampleRate / 50);
-            this.cyclesPerSample = this.cpuClock / this.sampleRate;
-
-            // Create gain node for volume control
-            this.gainNode = this.context.createGain();
-            this.gainNode.gain.value = this.muted ? 0 : this.volume;
-            this.gainNode.connect(this.context.destination);
-
-            if (this.context.audioWorklet) {
-                // Modern path: AudioWorklet (requires secure context)
-                await this.context.audioWorklet.addModule('audio-processor.js');
-                this.workletNode = new AudioWorkletNode(this.context, 'zx-audio-processor', {
-                    numberOfInputs: 0,
-                    numberOfOutputs: 1,
-                    outputChannelCount: [2]
-                });
-                this.workletNode.connect(this.gainNode);
-            } else {
-                // Fallback: ScriptProcessorNode (works over plain HTTP)
-                this._initScriptProcessor();
-            }
-
-            // Resume context (may be suspended due to autoplay policy)
-            if (this.context.state === 'suspended') {
-                await this.context.resume();
-            }
-
-            this.enabled = true;
-        } catch (e) {
-            console.error('Failed to initialize audio:', e);
-            this.enabled = false;
-        }
-    }
-
-    /**
-     * Initialize ScriptProcessorNode fallback for non-secure contexts
-     */
-    _initScriptProcessor() {
-        const bufferSize = 8192;
-        const ringL = new Float32Array(bufferSize);
-        const ringR = new Float32Array(bufferSize);
-        let writePos = 0;
-        let readPos = 0;
-
-        this.scriptNode = this.context.createScriptProcessor(2048, 0, 2);
-        this.scriptNode.onaudioprocess = (e) => {
-            const outL = e.outputBuffer.getChannelData(0);
-            const outR = e.outputBuffer.getChannelData(1);
-            for (let i = 0; i < outL.length; i++) {
-                if (readPos !== writePos) {
-                    outL[i] = ringL[readPos];
-                    outR[i] = ringR[readPos];
-                    readPos = (readPos + 1) % bufferSize;
-                } else {
-                    outL[i] = 0;
-                    outR[i] = 0;
-                }
-            }
-        };
-        this.scriptNode.connect(this.gainNode);
-
-        // Expose write function for flushSamples
-        this._scriptRing = { ringL, ringR, bufferSize };
-        this._scriptWritePos = () => writePos;
-        this._scriptWrite = (left, right) => {
-            for (let i = 0; i < left.length; i++) {
-                ringL[writePos] = left[i];
-                ringR[writePos] = right[i];
-                writePos = (writePos + 1) % bufferSize;
-            }
-        };
-    }
-
-    /**
-     * Stop audio output
-     */
-    stop() {
-        if (this.workletNode) {
-            this.workletNode.disconnect();
-            this.workletNode = null;
-        }
-        if (this.scriptNode) {
-            this.scriptNode.disconnect();
-            this.scriptNode = null;
-            this._scriptWrite = null;
-            this._scriptRing = null;
-            this._scriptWritePos = null;
-        }
-        if (this.gainNode) {
-            this.gainNode.disconnect();
-            this.gainNode = null;
-        }
-        if (this.context) {
-            this.context.close();
-            this.context = null;
-        }
-        this.enabled = false;
-    }
-
-    /**
-     * Set volume (0-1)
-     */
-    setVolume(vol) {
-        this.volume = Math.max(0, Math.min(1, vol));
-        if (this.gainNode && !this.muted) {
-            this.gainNode.gain.value = this.volume;
-        }
-    }
-
-    /**
-     * Set mute state
-     */
-    setMuted(muted) {
-        this.muted = muted;
-        if (this.gainNode) {
-            this.gainNode.gain.value = muted ? 0 : this.volume;
-        }
-    }
-
-    /**
-     * Toggle mute
-     */
-    toggleMute() {
-        this.setMuted(!this.muted);
-        return this.muted;
-    }
-
-    /**
-     * Send buffered samples to audio output
-     */
-    flushSamples() {
-        if (this.sendBufferPos === 0) return;
-
-        if (this.workletNode) {
-            this.workletNode.port.postMessage({
-                left: this.sendBufferL.slice(0, this.sendBufferPos),
-                right: this.sendBufferR.slice(0, this.sendBufferPos)
-            });
-        } else if (this._scriptWrite) {
-            this._scriptWrite(
-                this.sendBufferL.slice(0, this.sendBufferPos),
-                this.sendBufferR.slice(0, this.sendBufferPos)
-            );
-        } else {
-            this.sendBufferPos = 0;
-            return;
-        }
-        this.sendBufferPos = 0;
-    }
-
-    /**
-     * Process one frame of audio
-     * Called at end of each emulated frame
-     * @param {number} frameTstates - T-states in this frame
-     * @param {Array} beeperChanges - Array of {tStates, level} beeper state changes
-     * @param {number} beeperLevel - Final beeper level at end of frame
-     * @param {Array} tapeAudioChanges - Array of {tStates, level} tape signal changes
-     */
-    processFrame(frameTstates, beeperChanges = [], beeperLevel = 0, tapeAudioChanges = []) {
-        if (!this.enabled || (!this.workletNode && !this.scriptNode)) return;
-
-        // Generate samples for this frame
-        const samplesToGenerate = this.samplesPerFrame;
-
-        // CPU cycles per sample for this frame
-        const cyclesPerSample = frameTstates / samplesToGenerate;
-
-        // AY steps per sample
-        const ayStepsPerSample = this.ay ? cyclesPerSample * this.ayPerCpu : 0;
-
-        // Audio levels
-        const BEEPER_VOLUME = 0.5;
-        const TAPE_VOLUME = 0.5;  // Tape loading sound
-
-        // Only process beeper if there are changes (otherwise it's silent)
-        const hasBeeperActivity = beeperChanges.length > 0;
-        const hasTapeAudio = tapeAudioChanges.length > 0;
-
-        // Track beeper state for this frame
-        let beeperIdx = 0;
-        let currentBeeperLevel = beeperLevel;
-        if (hasBeeperActivity && beeperChanges[0].tStates === 0) {
-            currentBeeperLevel = beeperChanges[0].level;
-        }
-
-        // Track tape audio state for this frame
-        let tapeIdx = 0;
-        let currentTapeLevel = 0;
-        if (hasTapeAudio && tapeAudioChanges[0].tStates === 0) {
-            currentTapeLevel = tapeAudioChanges[0].level;
-        }
-
-        for (let i = 0; i < samplesToGenerate; i++) {
-            // Calculate T-state for this sample
-            const sampleTstates = (i + 0.5) * cyclesPerSample;
-
-            // Update beeper level based on changes
-            while (beeperIdx < beeperChanges.length &&
-                   beeperChanges[beeperIdx].tStates <= sampleTstates) {
-                currentBeeperLevel = beeperChanges[beeperIdx].level;
-                beeperIdx++;
-            }
-
-            // Update tape level based on changes
-            while (tapeIdx < tapeAudioChanges.length &&
-                   tapeAudioChanges[tapeIdx].tStates <= sampleTstates) {
-                currentTapeLevel = tapeAudioChanges[tapeIdx].level;
-                tapeIdx++;
-            }
-
-            // Get AY sample (if AY is available)
-            let left = 0, right = 0;
-            if (this.ay) {
-                this.ay.stepMultiple(Math.round(ayStepsPerSample));
-                [left, right] = this.ay.getAveragedSample();
-            }
-
-            // Add beeper to both channels (mono beeper) - only when active
-            if (hasBeeperActivity) {
-                const beeperSample = (currentBeeperLevel * 2 - 1) * BEEPER_VOLUME;
-                left += beeperSample;
-                right += beeperSample;
-            }
-
-            // Add tape audio - only when tape is playing
-            if (hasTapeAudio) {
-                const tapeSample = (currentTapeLevel * 2 - 1) * TAPE_VOLUME;
-                left += tapeSample;
-                right += tapeSample;
-            }
-
-            // Clamp to [-1, 1] range
-            left = Math.max(-1, Math.min(1, left));
-            right = Math.max(-1, Math.min(1, right));
-
-            // Add to send buffer
-            this.sendBufferL[this.sendBufferPos] = left;
-            this.sendBufferR[this.sendBufferPos] = right;
-            this.sendBufferPos++;
-
-            // Flush when buffer is full
-            if (this.sendBufferPos >= this.sendBufferSize) {
-                this.flushSamples();
-            }
-        }
-
-        // Flush remaining samples at end of frame
-        this.flushSamples();
-    }
-
-    /**
-     * Resume audio context (call from user interaction)
-     */
-    async resume() {
-        if (this.context && this.context.state === 'suspended') {
-            await this.context.resume();
-        }
-    }
-}

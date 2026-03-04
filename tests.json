@@ -292,8 +292,9 @@
             "author": "Sovietsoft S.Petersburg 1993",
             "source": "",
             "steps": [
-                { "frames": 52, "screen": "tests/systest_52.png" },
-                { "frames": 247, "screen": "tests/systest_247.png", "keys": "ENTER" }
+                { "frames": 52, "keys": "ENTER" },
+                { "frames": 347, "screen": "tests/systest_52.png", "keys": "ENTER" },
+                { "frames": 1247, "screen": "tests/systest_247.png", "keys": "ENTER" }
             ]
         },
 

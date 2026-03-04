@@ -135,6 +135,10 @@ import {
     handleRegisterClick, initXRefTooltips
 } from './app/emulator-control.js';
 import { initInputHandler, updateMouseStatus, updateGamepadStatus } from './app/input-handler.js';
+import { initCanvasRenderer } from './app/canvas-renderer.js';
+import { initOverlayRenderer } from './app/overlay-renderer.js';
+import { initRunLoop } from './app/run-loop.js';
+import { AudioManager } from './app/audio-output.js';
 import {
     initAudioOnUserGesture, toggleSound, updateSoundButtons,
     toggleFullscreen, applyFullscreenScale, restoreCanvasSize,
@@ -303,12 +307,60 @@ const chkShowTstates    = document.getElementById('chkShowTstates');
 // ═════════════════════════════════════════════════════════════════════
 
 const savedMachineType = localStorage.getItem('zx-machine-type') || '48k';
-let spectrum = new Spectrum(canvas, {
+let spectrum = new Spectrum({
     machineType: savedMachineType,
-    tapeTrapsEnabled: true,
-    overlayCanvas: overlayCanvas
+    tapeTrapsEnabled: true
 });
 window.spectrum = spectrum;
+
+// Host-side overlay rendering (Phase 4: overlays extracted from kernel)
+const overlayRenderer = initOverlayRenderer(overlayCanvas, spectrum);
+
+// Host-side canvas rendering (Phase 1: decouple canvas from kernel)
+const renderer = initCanvasRenderer(canvas, spectrum, overlayRenderer);
+spectrum.onRender = (frameBuffer) => {
+    overlayRenderer.processFrame(frameBuffer, overlayRenderer.isBeamMode());
+    renderer.render(frameBuffer);
+};
+spectrum.onDisplayDimensionsChanged = () => {
+    renderer.resize();
+    overlayRenderer.onDisplayDimensionsChanged();
+};
+spectrum.getDisplayFlags = () => ({
+    isBorderOnly: overlayRenderer.isBorderOnly(),
+    isBeamMode: overlayRenderer.isBeamMode()
+});
+spectrum.onZoomChanged = (z) => overlayRenderer.setZoomLevel(z);
+spectrum.onOverlayModeChanged = (mode) => overlayRenderer.setMode(mode);
+
+// Host-side run loop (Phase 5: scheduling extracted from kernel)
+const runLoop = initRunLoop(spectrum);
+spectrum.onStarted = () => runLoop.startScheduling();
+spectrum.onStopped = () => runLoop.stopScheduling();
+spectrum.onSpeedChanged = (speed) => {
+    runLoop.restartScheduling();
+    // Suspend audio at high speed to save CPU, resume at normal speed
+    if (spectrum.audio && spectrum.audio.context) {
+        if (speed === 0 || speed > 200) {
+            spectrum.audio.context.suspend();
+        } else if (spectrum.audio.context.state === 'suspended') {
+            spectrum.audio.context.resume();
+        }
+    }
+};
+spectrum._getFps = () => runLoop.getFps();
+
+// Host-side audio (Phase 6: audio extracted from kernel)
+spectrum.initAudio = () => {
+    if (!spectrum.audio) {
+        const audio = new AudioManager(spectrum.ay, spectrum.timing);
+        spectrum.audio = audio;
+        spectrum.onAudioFrame = (tstates, beeperChanges, beeperLevel, tapeAudioChanges) => {
+            audio.processFrame(tstates, beeperChanges, beeperLevel, tapeAudioChanges);
+        };
+    }
+    return spectrum.audio;
+};
 
 // Wrap media-io functions that take spectrum as a parameter
 const updateMediaIndicator = (name, type, driveIdx) => _updateMediaIndicator(name, type, driveIdx, spectrum);
@@ -1606,7 +1658,9 @@ machineSelect.addEventListener('change', () => {
     const wasRunning = spectrum.isRunning();
     if (wasRunning) spectrum.stop();
 
-    spectrum.setMachineType(type);
+    spectrum.setMachineType(type, false, {
+        ulaplusEnabled: localStorage.getItem('zxm8_ulaplus') === 'true'
+    });
     localStorage.setItem('zx-machine-type', type);
     applyRomsToEmulator(spectrum);
     spectrum.ula.setBorderPreset(borderSizeSelect.value);
@@ -1621,6 +1675,18 @@ machineSelect.addEventListener('change', () => {
     spectrum.updateBetaDiskPagingFlag();
     updateBetaDiskStatus(spectrum);
     setupDiskActivityCallback(spectrum);
+
+    // Recreate AudioManager with new timing (CPU clock may differ between machines)
+    if (spectrum.audio) {
+        const wasMuted = spectrum.audio.muted;
+        const oldVolume = spectrum.audio.volume;
+        spectrum.audio.stop();
+        spectrum.audio = null;
+        spectrum.initAudio();
+        spectrum.audio.setVolume(oldVolume);
+        spectrum.audio.setMuted(wasMuted);
+        spectrum.audio.start();
+    }
 
     if (wasRunning) spectrum.start();
     else spectrum.runFrame();
@@ -1739,7 +1805,7 @@ themeToggle.addEventListener('click', () => {
 // Overlay display mode
 const overlaySelect = document.getElementById('overlaySelect');
 overlaySelect.addEventListener('change', () => {
-    spectrum.setOverlayMode(overlaySelect.value);
+    overlayRenderer.setMode(overlaySelect.value);
     spectrum.redraw();
 });
 
@@ -2013,7 +2079,7 @@ document.addEventListener('keydown', (e) => {
         const curIdx = modes.indexOf(overlaySelect.value);
         const nextIdx = (curIdx + 1) % modes.length;
         overlaySelect.value = modes[nextIdx];
-        spectrum.setOverlayMode(modes[nextIdx]);
+        overlayRenderer.setMode(modes[nextIdx]);
         spectrum.redraw();
         showMessage(`Overlay: ${overlaySelect.options[overlaySelect.selectedIndex].text}`);
         return;

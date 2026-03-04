@@ -271,7 +271,9 @@ export async function loadProject(jsonStr, spectrum, deps) {
 
         // Switch machine type if needed
         if (project.machineType && project.machineType !== spectrum.machineType) {
-            spectrum.setMachineType(project.machineType);
+            spectrum.setMachineType(project.machineType, false, {
+                ulaplusEnabled: localStorage.getItem('zxm8_ulaplus') === 'true'
+            });
             applyRomsToEmulator(spectrum);
             const machineSelect = document.getElementById('machineSelect');
             machineSelect.value = project.machineType;

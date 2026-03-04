@@ -130,7 +130,19 @@ function _initRzxButtons() {
         btnRzxRecCancel.disabled = true;
         if (result && result.frames > 0) {
             const baseName = getExportBaseName() || 'recording';
-            spectrum.rzxDownloadRecording(`${baseName}.rzx`);
+            const filename = `${baseName}.rzx`;
+            const data = spectrum.rzxSaveRecording();
+            if (data) {
+                const blob = new Blob([data], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
             rzxRecStatus.textContent = `Exported: ${result.frames} frames`;
         } else {
             rzxRecStatus.textContent = 'No frames recorded';

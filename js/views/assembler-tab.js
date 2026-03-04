@@ -5061,6 +5061,7 @@ export function initAssemblerTab(deps) {
                     onProgress: (processed, queued) => {
                         cfaStatus.textContent = `Analyzing... ${processed} instructions, ${queued} queued`;
                     },
+                    onYield: () => new Promise(r => setTimeout(r, 0)),
                     maxInstructions: 100000
                 });
 

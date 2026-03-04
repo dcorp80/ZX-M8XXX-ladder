@@ -884,6 +884,24 @@ class TestRunner {
             return !isAborted();
         };
 
+        // Helper to press key with Caps Shift (for uppercase letters inside strings)
+        const pressWithCaps = async (key, holdFrames = 15, releaseFrames = 10) => {
+            if (isAborted()) return false;
+            ula.keyDown('Control');
+            ula.keyDown(key);
+            for (let i = 0; i < holdFrames; i++) {
+                this.spectrum.runFrame();
+            }
+            ula.keyUp(key);
+            ula.keyUp('Control');
+            for (let i = 0; i < releaseFrames; i++) {
+                this.spectrum.runFrame();
+            }
+            ula.keyboardState.fill(0xFF);
+            await new Promise(r => setTimeout(r, 0));
+            return !isAborted();
+        };
+
         // Helper to press key with Symbol Shift
         const pressWithSymbol = async (key, holdFrames = 15, releaseFrames = 10) => {
             if (isAborted()) return false;
@@ -914,17 +932,26 @@ class TestRunner {
             if (!await pressWithSymbol('p')) return;
 
             // Type filename characters
+            // Inside quotes (L mode), letters are lowercase by default;
+            // Caps Shift + letter gives uppercase (needed for TR-DOS filenames)
             for (const ch of diskRun) {
                 if (isAborted()) return;
                 const lower = ch.toLowerCase();
                 if (lower >= 'a' && lower <= 'z') {
-                    if (!await pressKey(lower)) return;
+                    const isUpper = ch >= 'A' && ch <= 'Z';
+                    if (isUpper) {
+                        if (!await pressWithCaps(lower)) return;
+                    } else {
+                        if (!await pressKey(lower)) return;
+                    }
                 } else if (lower >= '0' && lower <= '9') {
                     if (!await pressKey(lower)) return;
-                } else if (lower === '.') {
+                } else if (ch === '.') {
                     if (!await pressWithSymbol('m')) return;
-                } else if (lower === ' ') {
+                } else if (ch === ' ') {
                     if (!await pressKey(' ')) return;
+                } else if (ch === '=') {
+                    if (!await pressWithSymbol('l')) return;
                 }
             }
 
@@ -1062,7 +1089,7 @@ class TestRunner {
         for (let f = 0; f < framesToRun; f++) {
             if (this.aborted) return { passed: false, error: 'Aborted' };
 
-            const tstates = this.spectrum.runFrameHeadless();
+            const tstates = this.spectrum.runFrame();
             this.totalTstates += tstates;
             this.totalFrames++;
 
@@ -1096,7 +1123,7 @@ class TestRunner {
         // Compare screen if specified
         if (step.screen) {
             // Render final frame for comparison
-            const frameBuffer = this.spectrum.renderAndCaptureScreen();
+            const frameBuffer = this.spectrum.getFrameBuffer();
             const dims = this.spectrum.getScreenDimensions();
 
             // Create ImageData from frame buffer
@@ -1141,7 +1168,7 @@ class TestRunner {
                 const ms = parseInt(delayMatch[1]);
                 const frames = Math.ceil(ms / 20); // ~50fps
                 for (let f = 0; f < frames; f++) {
-                    this.spectrum.runFrameHeadless();
+                    this.spectrum.runFrame();
                 }
                 continue;
             }
@@ -1156,7 +1183,7 @@ class TestRunner {
 
             // Hold for a few frames
             for (let f = 0; f < 5; f++) {
-                this.spectrum.runFrameHeadless();
+                this.spectrum.runFrame();
             }
 
             // Release all keys
@@ -1165,7 +1192,7 @@ class TestRunner {
             }
 
             // Wait a frame after release
-            this.spectrum.runFrameHeadless();
+            this.spectrum.runFrame();
         }
     }
 
@@ -1430,8 +1457,8 @@ class TestRunner {
 
                 // Update canvas every 2 frames for performance
                 if (this.previewFrameCount % 2 === 0) {
-                    // Use renderAndCaptureScreen for consistent border rendering
-                    const frameBuffer = this.spectrum.renderAndCaptureScreen();
+                    // Get frame buffer for consistent border rendering
+                    const frameBuffer = this.spectrum.getFrameBuffer();
                     const imageData = new ImageData(
                         new Uint8ClampedArray(frameBuffer),
                         dims.width,

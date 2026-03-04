@@ -409,7 +409,9 @@ export function initializeEmulator(spectrum, showMessage) {
     if (spectrum.machineType !== '48k') {
         const profile = getMachineProfile(spectrum.machineType);
         if (!romData[profile.romFile]) {
-            spectrum.setMachineType('48k');
+            spectrum.setMachineType('48k', false, {
+                ulaplusEnabled: localStorage.getItem('zxm8_ulaplus') === 'true'
+            });
             updateULAplusStatus(spectrum);
         }
     }
