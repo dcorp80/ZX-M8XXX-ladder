@@ -31,13 +31,19 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:update-hashes": "node tests/headless/update-hashes.js",
+    "test:verify-hashes": "node tests/headless/update-hashes.js --verify"
   },
   "dependencies": {
     "pako": "^2.1.0"
   },
   "devDependencies": {
+    "@vitest/ui": "^4.0.18",
+    "pngjs": "^7.0.0",
     "puppeteer": "^24.37.5",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   }
 }

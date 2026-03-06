@@ -13,7 +13,11 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 80, "screen": "tests/ula48.png" }
+                {
+                    "frames": 80,
+                    "screen": "tests/ula48.png",
+                    "screenHash": "6b6016309f1405e64230593fbccd41671f70e63f6116e78ef4a5afed4f4eb810"
+                }
             ]
         },
         {
@@ -29,7 +33,11 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 100, "screen": "tests/ula128.png" }
+                {
+                    "frames": 100,
+                    "screen": "tests/ula128.png",
+                    "screenHash": "daa3486e34389b18ea38abc68823b42910abbdde613c0327169a7c365cd250e0"
+                }
             ]
         },
         {
@@ -44,7 +52,11 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 50, "screen": "tests/pent128.png" }
+                {
+                    "frames": 50,
+                    "screen": "tests/pent128.png",
+                    "screenHash": "03c6cb43aabbea992227fd2d2726535673eeefb1f9e4cbfcc4dd008041563ac9"
+                }
             ]
         },
         {
@@ -60,11 +72,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 100, "screen": "tests/scroll17_101.png" }
+                {
+                    "frames": 100,
+                    "screen": "tests/scroll17_101.png",
+                    "screenHash": "a072906b007c12f1ef4d38742768289c552fd275dea775fbad44e72d90fc2a18"
+                }
             ]
         },
-
-
         {
             "id": "ula+256",
             "name": "ULA+ HAM256",
@@ -79,10 +93,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 45, "screen": "tests/ula+256_45.png" }
+                {
+                    "frames": 45,
+                    "screen": "tests/ula+256_45.png",
+                    "screenHash": "5027d615f6bda4aabd59bf7fb623426da5c3c1584925a6f049614fcf77d8be92"
+                }
             ]
         },
-
         {
             "id": "ula+rainbow",
             "name": "ULA+ rainbow",
@@ -97,10 +114,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 164, "screen": "tests/ula+rainbow_164.png" }
+                {
+                    "frames": 164,
+                    "screen": "tests/ula+rainbow_164.png",
+                    "screenHash": "5355e85912f258dec5971fe4c4fef08f17b1399b045f6f4ac00627ee6df37ac6"
+                }
             ]
         },
-
         {
             "id": "Nirvana_48",
             "name": "Nirvana 48",
@@ -114,7 +134,11 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 57, "screen": "tests/Nirvana_48_57.png" }
+                {
+                    "frames": 57,
+                    "screen": "tests/Nirvana_48_57.png",
+                    "screenHash": "73e0654f1af678af542c2e34d28a6cd801c4c9066fcecf65f53b7f2d0ae11b2d"
+                }
             ]
         },
         {
@@ -130,10 +154,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 109, "screen": "tests/Nirvana_128_109.png" }
+                {
+                    "frames": 109,
+                    "screen": "tests/Nirvana_128_109.png",
+                    "screenHash": "26b2335483eb5dff8022d038874f68bf84b8c3455465a54b267f353ca5d7d182"
+                }
             ]
         },
-
         {
             "id": "aquaplane",
             "name": "Aquaplane 48K",
@@ -146,10 +173,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 86, "screen": "tests/aquaplane_87.png" }
+                {
+                    "frames": 86,
+                    "screen": "tests/aquaplane_87.png",
+                    "screenHash": "e91db2f090056a48511354e2636ac2f30b8b19d33d1497bdfa592a135f6c9695"
+                }
             ]
         },
-
         {
             "id": "comet",
             "name": "Comet game 48K",
@@ -162,10 +192,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 152, "screen": "tests/comet_153.png" }
+                {
+                    "frames": 152,
+                    "screen": "tests/comet_153.png",
+                    "screenHash": "5391052080f9143e15ab7209e4fa1bd6161d6786d5fc87f9452dce53fc295754"
+                }
             ]
         },
-
         {
             "id": "academy",
             "name": "Academy 48K",
@@ -178,10 +211,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 168, "screen": "tests/academy_169.png" }
+                {
+                    "frames": 168,
+                    "screen": "tests/academy_169.png",
+                    "screenHash": "2fcf4cee7182266be49990b39164398e863353e7a5ac224a349f6478b468797f"
+                }
             ]
         },
-
         {
             "id": "venom",
             "name": "Venom 48K",
@@ -194,10 +230,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 94, "screen": "tests/venom_94.png" }
+                {
+                    "frames": 94,
+                    "screen": "tests/venom_94.png",
+                    "screenHash": "f37bb2f4012805ddb0d789adbf89007628116bb1a806ec0452a0844f8e9c0055"
+                }
             ]
         },
-
         {
             "id": "shock128",
             "name": "Shock 128K",
@@ -209,10 +248,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 80, "screen": "tests/shock128_81.png" }
+                {
+                    "frames": 80,
+                    "screen": "tests/shock128_81.png",
+                    "screenHash": "1ce6dc94954ea21d88de387c58b746b1aed781a0021734e98a9573f388270407"
+                }
             ]
         },
-
         {
             "id": "echology",
             "name": "Echology",
@@ -224,10 +266,13 @@
             "author": "",
             "source": "",
             "steps": [
-                { "frames": 210, "screen": "tests/echology_211.png" }
+                {
+                    "frames": 210,
+                    "screen": "tests/echology_211.png",
+                    "screenHash": "4fbb8cec4afdff023611ddc524d3ea55c6a44373602a931e92768bc10b653e59"
+                }
             ]
         },
-
         {
             "id": "eric",
             "name": "Eric RZX",
@@ -239,10 +284,13 @@
             "author": "",
             "source": "https://www.rzxarchive.co.uk/e.php",
             "steps": [
-                { "frames": 2486, "screen": "tests/eric_2486.png" }
+                {
+                    "frames": 2486,
+                    "screen": "tests/eric_2486.png",
+                    "screenHash": "6b8f76789e1c3dd470e688a0068962aa0f347b076f12de54a337f4a98f83ee47"
+                }
             ]
         },
-
         {
             "id": "cubix",
             "name": "Cubix",
@@ -256,10 +304,13 @@
             "author": "Gogin",
             "source": "https://yrgb.ru/",
             "steps": [
-                { "frames": 276, "screen": "tests/cubix_276.png" }
+                {
+                    "frames": 276,
+                    "screen": "tests/cubix_276.png",
+                    "screenHash": "4ef46b9259f43523b80cf8179e7e0e9e50cfa6e8da4bbdb91076eb0a7c9d83a3"
+                }
             ]
         },
-
         {
             "id": "ZX-Diagnostics",
             "name": "ZX-Diagnostics",
@@ -273,11 +324,19 @@
             "author": "Brendan Alford",
             "source": "https://spectrumcomputing.co.uk/entry/44397/ZX-Spectrum/ZX_-Diagnostics",
             "steps": [
-                { "frames": 45, "screen": "tests/ZX-Diagnostics_46.png" },
-                { "frames": 3219, "screen": "tests/ZX-Diagnostics_3219.png", "keys": "N" }
+                {
+                    "frames": 45,
+                    "screen": "tests/ZX-Diagnostics_46.png",
+                    "screenHash": "66d832d271eda932569f182df54936563b3ba9f7d0f423e46bb3b19386f255c8"
+                },
+                {
+                    "frames": 3219,
+                    "screen": "tests/ZX-Diagnostics_3219.png",
+                    "keys": "N",
+                    "screenHash": "baa4044aaf01c7b4a6f63f6ff309f08bfcc150fe5d9eb28f615b9423f4f615ed"
+                }
             ]
         },
-
         {
             "id": "systest_1.01r",
             "name": "SYSTEM TEST V1.01R",
@@ -292,12 +351,24 @@
             "author": "Sovietsoft S.Petersburg 1993",
             "source": "",
             "steps": [
-                { "frames": 52, "keys": "ENTER" },
-                { "frames": 347, "screen": "tests/systest_52.png", "keys": "ENTER" },
-                { "frames": 1247, "screen": "tests/systest_247.png", "keys": "ENTER" }
+                {
+                    "frames": 52,
+                    "keys": "ENTER"
+                },
+                {
+                    "frames": 347,
+                    "screen": "tests/systest_52.png",
+                    "keys": "ENTER",
+                    "screenHash": "c7a191335eeb05ebed9794ddf28375c2ffeca2a4f9d6cadc447079122ed7f0c2"
+                },
+                {
+                    "frames": 1247,
+                    "screen": "tests/systest_247.png",
+                    "keys": "ENTER",
+                    "screenHash": "a0e87d747f203b7e7d58b14444b6673eb91eed4411b40d285c19bebe204642b5"
+                }
             ]
         },
-
         {
             "id": "global_test_1.0b",
             "name": "Global test v1.0 beta",
@@ -312,11 +383,20 @@
             "author": "POLTERGEIST from Samara",
             "source": "",
             "steps": [
-                { "frames": 500, "screen": "tests/global_test_1.0b_412.png", "keys": "SPACE,200ms,SPACE,500ms,Q,Q,Q,SPACE" },
-                { "frames": 1875, "screen": "tests/global_test_1.0b_1875.png", "keys": "SPACE" }
+                {
+                    "frames": 500,
+                    "screen": "tests/global_test_1.0b_412.png",
+                    "keys": "SPACE,200ms,SPACE,500ms,Q,Q,Q,SPACE",
+                    "screenHash": "7f465906af9fc7d767f56f71f6015f7de771f840d7d3dd0c491742beb1ed6d90"
+                },
+                {
+                    "frames": 1875,
+                    "screen": "tests/global_test_1.0b_1875.png",
+                    "keys": "SPACE",
+                    "screenHash": "fd06b48de03a47ccf92d49f8021ebcee24be9964b88384e954f6bd89e874dae3"
+                }
             ]
         },
-
         {
             "id": "Another Universal Memory Test",
             "name": "Another Universal Memory Test",
@@ -331,13 +411,25 @@
             "author": "DDp",
             "source": "",
             "steps": [
-                { "frames": 67, "screen": "tests/Another Universal Memory Test_67.png"},
-                { "frames": 240, "screen": "tests/Another Universal Memory Test_240.png", "keys": "1" },
-                { "frames": 2480, "screen": "tests/Another Universal Memory Test_2480.png", "keys": "ENTER"}
+                {
+                    "frames": 67,
+                    "screen": "tests/Another Universal Memory Test_67.png",
+                    "screenHash": "235cc41643270931cdcdca3f9c77f568a3fc7c932c630b4edfbc3988ac40a196"
+                },
+                {
+                    "frames": 240,
+                    "screen": "tests/Another Universal Memory Test_240.png",
+                    "keys": "1",
+                    "screenHash": "8432398adf29cb33dd5b1f952388a4b3ec77926d1d5987c148b605880e829365"
+                },
+                {
+                    "frames": 2480,
+                    "screen": "tests/Another Universal Memory Test_2480.png",
+                    "keys": "ENTER",
+                    "screenHash": "7d20ebf3a8d6474e74c0163f43c019ec3b3801607ba9de77bef3cc24bfba348d"
+                }
             ]
         },
-
-
         {
             "id": "cpd-48k",
             "name": "CPD-test 48k",
@@ -350,7 +442,11 @@
             "author": "Michael Sapach",
             "source": "",
             "steps": [
-                { "frames": 988, "screen": "tests/cpd-48k.png" }
+                {
+                    "frames": 988,
+                    "screen": "tests/cpd-48k.png",
+                    "screenHash": "7fb14d88170ffec827e4318531fc84d5c1dda7e9de3288f5874aec8f5a2e1fce"
+                }
             ]
         },
         {
@@ -365,16 +461,19 @@
             "author": "Michael Sapach",
             "source": "",
             "steps": [
-                { "frames": 786, "screen": "tests/cpd-128k.png" }
+                {
+                    "frames": 786,
+                    "screen": "tests/cpd-128k.png",
+                    "screenHash": "060c43b3a42b418c6af0806e9569423f804cd009f0b90bd83a330929d2ae19c7"
+                }
             ]
         },
-
         {
             "id": "z80full",
             "name": "Raxoft z80full",
             "category": "cpu",
             "file": "tests/raxoft.zip",
-			"zipEntry": "z80full.tap",
+            "zipEntry": "z80full.tap",
             "machine": "48k",
             "earlyTimings": true,
             "palette": "default",
@@ -382,14 +481,53 @@
             "author": "Patrik Rak",
             "source": "https://github.com/raxoft/z80test",
             "steps": [
-                { "frames": 4405, "screen": "tests/z80full_1.png" },
-                { "frames": 9458, "screen": "tests/z80full_2.png", "keys": "ENTER" },
-                { "frames": 12133, "screen": "tests/z80full_3.png", "keys": "ENTER" },
-                { "frames": 15143, "screen": "tests/z80full_4.png", "keys": "ENTER" },
-                { "frames": 17310, "screen": "tests/z80full_5.png", "keys": "ENTER" },
-                { "frames": 18182, "screen": "tests/z80full_6.png", "keys": "ENTER" },
-                { "frames": 18671, "screen": "tests/z80full_7.png", "keys": "ENTER" },
-                { "frames": 19385, "screen": "tests/z80full_8.png", "keys": "ENTER" }
+                {
+                    "frames": 4405,
+                    "screen": "tests/z80full_1.png",
+                    "screenHash": "1d99f837efe426ba6dabb34d2c7a04c61455d3179f690f8c53ab0a053d36d905"
+                },
+                {
+                    "frames": 9458,
+                    "screen": "tests/z80full_2.png",
+                    "keys": "ENTER",
+                    "screenHash": "0c49e5bbff7daebfe0cb2235502556c0194613319fa83fc915acdbf8d6b6ef8f"
+                },
+                {
+                    "frames": 12133,
+                    "screen": "tests/z80full_3.png",
+                    "keys": "ENTER",
+                    "screenHash": "0bb8b34fa6dd770c0fd69648c86066f76380098a5a44d338c757f52e44def65b"
+                },
+                {
+                    "frames": 15143,
+                    "screen": "tests/z80full_4.png",
+                    "keys": "ENTER",
+                    "screenHash": "7cbbdae79d2d7d585fd6eddf2572652ec07f907f13bd215e6cb37030f818eb76"
+                },
+                {
+                    "frames": 17310,
+                    "screen": "tests/z80full_5.png",
+                    "keys": "ENTER",
+                    "screenHash": "798edce225d4b85ffce2517234420af8e584ab382c4304394b2fdb2651adbe33"
+                },
+                {
+                    "frames": 18182,
+                    "screen": "tests/z80full_6.png",
+                    "keys": "ENTER",
+                    "screenHash": "9f6d709461ab404a37c3bb95d84f612989b629b8056320edd5bf20e3dbe228d6"
+                },
+                {
+                    "frames": 18671,
+                    "screen": "tests/z80full_7.png",
+                    "keys": "ENTER",
+                    "screenHash": "18d9c79a7f6a60e258d20b774fda235e9599d710988522aab653c7dfa4ece27d"
+                },
+                {
+                    "frames": 19385,
+                    "screen": "tests/z80full_8.png",
+                    "keys": "ENTER",
+                    "screenHash": "08c7af712593ec43266a810847f4cd1733de58971e217676a92b2a51f6c90b0f"
+                }
             ]
         },
         {
@@ -397,7 +535,7 @@
             "name": "Raxoft z80ccf",
             "category": "cpu",
             "file": "tests/raxoft.zip",
-			"zipEntry": "z80ccf.tap",
+            "zipEntry": "z80ccf.tap",
             "machine": "48k",
             "earlyTimings": true,
             "palette": "default",
@@ -405,14 +543,53 @@
             "author": "Patrik Rak",
             "source": "https://github.com/raxoft/z80test",
             "steps": [
-                { "frames": 2350, "screen": "tests/z80ccf_1.png" },
-                { "frames": 5076, "screen": "tests/z80ccf_2.png", "keys": "ENTER" },
-                { "frames": 6610, "screen": "tests/z80ccf_3.png", "keys": "ENTER" },
-                { "frames": 8430, "screen": "tests/z80ccf_4.png", "keys": "ENTER" },
-                { "frames": 9884, "screen": "tests/z80ccf_5.png", "keys": "ENTER" },
-                { "frames": 10618, "screen": "tests/z80ccf_6.png", "keys": "ENTER" },
-                { "frames": 11064, "screen": "tests/z80ccf_7.png", "keys": "ENTER" },
-                { "frames": 11578, "screen": "tests/z80ccf_8.png", "keys": "ENTER" }
+                {
+                    "frames": 2350,
+                    "screen": "tests/z80ccf_1.png",
+                    "screenHash": "a52ea39a145425eec3b0b5e27f3558a83b04eb1eeeff12a6f07bff5a522a4eb0"
+                },
+                {
+                    "frames": 5076,
+                    "screen": "tests/z80ccf_2.png",
+                    "keys": "ENTER",
+                    "screenHash": "0c49e5bbff7daebfe0cb2235502556c0194613319fa83fc915acdbf8d6b6ef8f"
+                },
+                {
+                    "frames": 6610,
+                    "screen": "tests/z80ccf_3.png",
+                    "keys": "ENTER",
+                    "screenHash": "0bb8b34fa6dd770c0fd69648c86066f76380098a5a44d338c757f52e44def65b"
+                },
+                {
+                    "frames": 8430,
+                    "screen": "tests/z80ccf_4.png",
+                    "keys": "ENTER",
+                    "screenHash": "7cbbdae79d2d7d585fd6eddf2572652ec07f907f13bd215e6cb37030f818eb76"
+                },
+                {
+                    "frames": 9884,
+                    "screen": "tests/z80ccf_5.png",
+                    "keys": "ENTER",
+                    "screenHash": "798edce225d4b85ffce2517234420af8e584ab382c4304394b2fdb2651adbe33"
+                },
+                {
+                    "frames": 10618,
+                    "screen": "tests/z80ccf_6.png",
+                    "keys": "ENTER",
+                    "screenHash": "9f6d709461ab404a37c3bb95d84f612989b629b8056320edd5bf20e3dbe228d6"
+                },
+                {
+                    "frames": 11064,
+                    "screen": "tests/z80ccf_7.png",
+                    "keys": "ENTER",
+                    "screenHash": "18d9c79a7f6a60e258d20b774fda235e9599d710988522aab653c7dfa4ece27d"
+                },
+                {
+                    "frames": 11578,
+                    "screen": "tests/z80ccf_8.png",
+                    "keys": "ENTER",
+                    "screenHash": "08c7af712593ec43266a810847f4cd1733de58971e217676a92b2a51f6c90b0f"
+                }
             ]
         },
         {
@@ -420,7 +597,7 @@
             "name": "Raxoft z80doc",
             "category": "cpu",
             "file": "tests/raxoft.zip",
-			"zipEntry": "z80doc.tap",
+            "zipEntry": "z80doc.tap",
             "machine": "48k",
             "earlyTimings": true,
             "palette": "default",
@@ -428,14 +605,53 @@
             "author": "Patrik Rak",
             "source": "https://github.com/raxoft/z80test",
             "steps": [
-                { "frames": 4540, "screen": "tests/z80doc_1.png" },
-                { "frames": 9588, "screen": "tests/z80doc_2.png", "keys": "ENTER" },
-                { "frames": 12284, "screen": "tests/z80doc_3.png", "keys": "ENTER" },
-                { "frames": 15396, "screen": "tests/z80doc_4.png", "keys": "ENTER" },
-                { "frames": 17594, "screen": "tests/z80doc_5.png", "keys": "ENTER" },
-                { "frames": 18552, "screen": "tests/z80doc_6.png", "keys": "ENTER" },
-                { "frames": 19208, "screen": "tests/z80doc_7.png", "keys": "ENTER" },
-                { "frames": 19958, "screen": "tests/z80doc_8.png", "keys": "ENTER" }
+                {
+                    "frames": 4540,
+                    "screen": "tests/z80doc_1.png",
+                    "screenHash": "349eaf967f7a21e798c70001dab28e4cd6f35ff309f519d0c61b8a842bd44282"
+                },
+                {
+                    "frames": 9588,
+                    "screen": "tests/z80doc_2.png",
+                    "keys": "ENTER",
+                    "screenHash": "0c49e5bbff7daebfe0cb2235502556c0194613319fa83fc915acdbf8d6b6ef8f"
+                },
+                {
+                    "frames": 12284,
+                    "screen": "tests/z80doc_3.png",
+                    "keys": "ENTER",
+                    "screenHash": "0bb8b34fa6dd770c0fd69648c86066f76380098a5a44d338c757f52e44def65b"
+                },
+                {
+                    "frames": 15396,
+                    "screen": "tests/z80doc_4.png",
+                    "keys": "ENTER",
+                    "screenHash": "7cbbdae79d2d7d585fd6eddf2572652ec07f907f13bd215e6cb37030f818eb76"
+                },
+                {
+                    "frames": 17594,
+                    "screen": "tests/z80doc_5.png",
+                    "keys": "ENTER",
+                    "screenHash": "798edce225d4b85ffce2517234420af8e584ab382c4304394b2fdb2651adbe33"
+                },
+                {
+                    "frames": 18552,
+                    "screen": "tests/z80doc_6.png",
+                    "keys": "ENTER",
+                    "screenHash": "9f6d709461ab404a37c3bb95d84f612989b629b8056320edd5bf20e3dbe228d6"
+                },
+                {
+                    "frames": 19208,
+                    "screen": "tests/z80doc_7.png",
+                    "keys": "ENTER",
+                    "screenHash": "18d9c79a7f6a60e258d20b774fda235e9599d710988522aab653c7dfa4ece27d"
+                },
+                {
+                    "frames": 19958,
+                    "screen": "tests/z80doc_8.png",
+                    "keys": "ENTER",
+                    "screenHash": "08c7af712593ec43266a810847f4cd1733de58971e217676a92b2a51f6c90b0f"
+                }
             ]
         },
         {
@@ -443,7 +659,7 @@
             "name": "Raxoft z80docflags",
             "category": "cpu",
             "file": "tests/raxoft.zip",
-			"zipEntry": "z80docflags.tap",
+            "zipEntry": "z80docflags.tap",
             "machine": "48k",
             "earlyTimings": true,
             "palette": "default",
@@ -451,14 +667,53 @@
             "author": "Patrik Rak",
             "source": "https://github.com/raxoft/z80test",
             "steps": [
-                { "frames": 2218, "screen": "tests/z80docflags_1.png" },
-                { "frames": 4906, "screen": "tests/z80docflags_2.png", "keys": "ENTER" },
-                { "frames": 6408, "screen": "tests/z80docflags_3.png", "keys": "ENTER" },
-                { "frames": 8132, "screen": "tests/z80docflags_4.png", "keys": "ENTER" },
-                { "frames": 9454, "screen": "tests/z80docflags_5.png", "keys": "ENTER" },
-                { "frames": 10130, "screen": "tests/z80docflags_6.png", "keys": "ENTER" },
-                { "frames": 10624, "screen": "tests/z80docflags_7.png", "keys": "ENTER" },
-                { "frames": 11248, "screen": "tests/z80docflags_8.png", "keys": "ENTER" }
+                {
+                    "frames": 2218,
+                    "screen": "tests/z80docflags_1.png",
+                    "screenHash": "7e830e5a543fbf43ac4d3f3d12a80f4afdf28d9f51e9f6e079741a4bdea0abe6"
+                },
+                {
+                    "frames": 4906,
+                    "screen": "tests/z80docflags_2.png",
+                    "keys": "ENTER",
+                    "screenHash": "0c49e5bbff7daebfe0cb2235502556c0194613319fa83fc915acdbf8d6b6ef8f"
+                },
+                {
+                    "frames": 6408,
+                    "screen": "tests/z80docflags_3.png",
+                    "keys": "ENTER",
+                    "screenHash": "0bb8b34fa6dd770c0fd69648c86066f76380098a5a44d338c757f52e44def65b"
+                },
+                {
+                    "frames": 8132,
+                    "screen": "tests/z80docflags_4.png",
+                    "keys": "ENTER",
+                    "screenHash": "7cbbdae79d2d7d585fd6eddf2572652ec07f907f13bd215e6cb37030f818eb76"
+                },
+                {
+                    "frames": 9454,
+                    "screen": "tests/z80docflags_5.png",
+                    "keys": "ENTER",
+                    "screenHash": "798edce225d4b85ffce2517234420af8e584ab382c4304394b2fdb2651adbe33"
+                },
+                {
+                    "frames": 10130,
+                    "screen": "tests/z80docflags_6.png",
+                    "keys": "ENTER",
+                    "screenHash": "9f6d709461ab404a37c3bb95d84f612989b629b8056320edd5bf20e3dbe228d6"
+                },
+                {
+                    "frames": 10624,
+                    "screen": "tests/z80docflags_7.png",
+                    "keys": "ENTER",
+                    "screenHash": "18d9c79a7f6a60e258d20b774fda235e9599d710988522aab653c7dfa4ece27d"
+                },
+                {
+                    "frames": 11248,
+                    "screen": "tests/z80docflags_8.png",
+                    "keys": "ENTER",
+                    "screenHash": "08c7af712593ec43266a810847f4cd1733de58971e217676a92b2a51f6c90b0f"
+                }
             ]
         },
         {
@@ -466,7 +721,7 @@
             "name": "Raxoft z80flags",
             "category": "cpu",
             "file": "tests/raxoft.zip",
-			"zipEntry": "z80flags.tap",
+            "zipEntry": "z80flags.tap",
             "machine": "48k",
             "earlyTimings": true,
             "palette": "default",
@@ -474,14 +729,53 @@
             "author": "Patrik Rak",
             "source": "https://github.com/raxoft/z80test",
             "steps": [
-                { "frames": 2130, "screen": "tests/z80flags_1.png" },
-                { "frames": 4654, "screen": "tests/z80flags_2.png", "keys": "ENTER" },
-                { "frames": 6009, "screen": "tests/z80flags_3.png", "keys": "ENTER" },
-                { "frames": 7533, "screen": "tests/z80flags_4.png", "keys": "ENTER" },
-                { "frames": 8751, "screen": "tests/z80flags_5.png", "keys": "ENTER" },
-                { "frames": 9320, "screen": "tests/z80flags_6.png", "keys": "ENTER" },
-                { "frames": 9661, "screen": "tests/z80flags_7.png", "keys": "ENTER" },
-                { "frames": 10102, "screen": "tests/z80flags_8.png", "keys": "ENTER" }
+                {
+                    "frames": 2130,
+                    "screen": "tests/z80flags_1.png",
+                    "screenHash": "612e034a2413923c759ae28b5bcf91066cc953db5a36820fb7c85213369ab949"
+                },
+                {
+                    "frames": 4654,
+                    "screen": "tests/z80flags_2.png",
+                    "keys": "ENTER",
+                    "screenHash": "0c49e5bbff7daebfe0cb2235502556c0194613319fa83fc915acdbf8d6b6ef8f"
+                },
+                {
+                    "frames": 6009,
+                    "screen": "tests/z80flags_3.png",
+                    "keys": "ENTER",
+                    "screenHash": "0bb8b34fa6dd770c0fd69648c86066f76380098a5a44d338c757f52e44def65b"
+                },
+                {
+                    "frames": 7533,
+                    "screen": "tests/z80flags_4.png",
+                    "keys": "ENTER",
+                    "screenHash": "7cbbdae79d2d7d585fd6eddf2572652ec07f907f13bd215e6cb37030f818eb76"
+                },
+                {
+                    "frames": 8751,
+                    "screen": "tests/z80flags_5.png",
+                    "keys": "ENTER",
+                    "screenHash": "798edce225d4b85ffce2517234420af8e584ab382c4304394b2fdb2651adbe33"
+                },
+                {
+                    "frames": 9320,
+                    "screen": "tests/z80flags_6.png",
+                    "keys": "ENTER",
+                    "screenHash": "9f6d709461ab404a37c3bb95d84f612989b629b8056320edd5bf20e3dbe228d6"
+                },
+                {
+                    "frames": 9661,
+                    "screen": "tests/z80flags_7.png",
+                    "keys": "ENTER",
+                    "screenHash": "18d9c79a7f6a60e258d20b774fda235e9599d710988522aab653c7dfa4ece27d"
+                },
+                {
+                    "frames": 10102,
+                    "screen": "tests/z80flags_8.png",
+                    "keys": "ENTER",
+                    "screenHash": "08c7af712593ec43266a810847f4cd1733de58971e217676a92b2a51f6c90b0f"
+                }
             ]
         },
         {
@@ -489,7 +783,7 @@
             "name": "Raxoft z80memptr",
             "category": "cpu",
             "file": "tests/raxoft.zip",
-			"zipEntry": "z80memptr.tap",
+            "zipEntry": "z80memptr.tap",
             "machine": "48k",
             "earlyTimings": true,
             "palette": "default",
@@ -497,14 +791,53 @@
             "author": "Patrik Rak",
             "source": "https://github.com/raxoft/z80test",
             "steps": [
-                { "frames": 2189, "screen": "tests/z80memptr_1.png" },
-                { "frames": 4763, "screen": "tests/z80memptr_2.png", "keys": "ENTER" },
-                { "frames": 6113, "screen": "tests/z80memptr_3.png", "keys": "ENTER" },
-                { "frames": 7654, "screen": "tests/z80memptr_4.png", "keys": "ENTER" },
-                { "frames": 8842, "screen": "tests/z80memptr_5.png", "keys": "ENTER" },
-                { "frames": 9375, "screen": "tests/z80memptr_6.png", "keys": "ENTER" },
-                { "frames": 9732, "screen": "tests/z80memptr_7.png", "keys": "ENTER" },
-                { "frames": 10166, "screen": "tests/z80memptr_8.png", "keys": "ENTER" }
+                {
+                    "frames": 2189,
+                    "screen": "tests/z80memptr_1.png",
+                    "screenHash": "3c90d40ea3f97547eecea97188bb7a1b8a9d7be43b5c149d0ecfe97a44a99b28"
+                },
+                {
+                    "frames": 4763,
+                    "screen": "tests/z80memptr_2.png",
+                    "keys": "ENTER",
+                    "screenHash": "0c49e5bbff7daebfe0cb2235502556c0194613319fa83fc915acdbf8d6b6ef8f"
+                },
+                {
+                    "frames": 6113,
+                    "screen": "tests/z80memptr_3.png",
+                    "keys": "ENTER",
+                    "screenHash": "0bb8b34fa6dd770c0fd69648c86066f76380098a5a44d338c757f52e44def65b"
+                },
+                {
+                    "frames": 7654,
+                    "screen": "tests/z80memptr_4.png",
+                    "keys": "ENTER",
+                    "screenHash": "7cbbdae79d2d7d585fd6eddf2572652ec07f907f13bd215e6cb37030f818eb76"
+                },
+                {
+                    "frames": 8842,
+                    "screen": "tests/z80memptr_5.png",
+                    "keys": "ENTER",
+                    "screenHash": "798edce225d4b85ffce2517234420af8e584ab382c4304394b2fdb2651adbe33"
+                },
+                {
+                    "frames": 9375,
+                    "screen": "tests/z80memptr_6.png",
+                    "keys": "ENTER",
+                    "screenHash": "9f6d709461ab404a37c3bb95d84f612989b629b8056320edd5bf20e3dbe228d6"
+                },
+                {
+                    "frames": 9732,
+                    "screen": "tests/z80memptr_7.png",
+                    "keys": "ENTER",
+                    "screenHash": "18d9c79a7f6a60e258d20b774fda235e9599d710988522aab653c7dfa4ece27d"
+                },
+                {
+                    "frames": 10166,
+                    "screen": "tests/z80memptr_8.png",
+                    "keys": "ENTER",
+                    "screenHash": "08c7af712593ec43266a810847f4cd1733de58971e217676a92b2a51f6c90b0f"
+                }
             ]
         },
         {
@@ -519,17 +852,48 @@
             "author": "Frank D. Cringle",
             "source": "https://mdfs.net/Software/Z80/Exerciser/",
             "steps": [
-                { "frames": 100000, "screen": "tests/zexall_0.png" },
-                { "frames": 200000, "screen": "tests/zexall_0.png" },
-                { "frames": 300000, "screen": "tests/zexall_0.png" },
-                { "frames": 450583, "screen": "tests/zexall_1.png" },
-                { "frames": 500000, "screen": "tests/zexall_1.png" },
-                { "frames": 600000, "screen": "tests/zexall_2.png" },
-                { "frames": 700000, "screen": "tests/zexall_3.png" },
-                { "frames": 750000, "screen": "tests/zexall_4.png" }
+                {
+                    "frames": 100000,
+                    "screen": "tests/zexall_0.png",
+                    "screenHash": "ef687d6045d4ac6bfd81049c343c25348acfec53a603496e2db1606a5c251683"
+                },
+                {
+                    "frames": 200000,
+                    "screen": "tests/zexall_0.png",
+                    "screenHash": "ef687d6045d4ac6bfd81049c343c25348acfec53a603496e2db1606a5c251683"
+                },
+                {
+                    "frames": 300000,
+                    "screen": "tests/zexall_0.png",
+                    "screenHash": "ef687d6045d4ac6bfd81049c343c25348acfec53a603496e2db1606a5c251683"
+                },
+                {
+                    "frames": 450583,
+                    "screen": "tests/zexall_1.png",
+                    "screenHash": "81ffe06eebdbba4191ff953f1cecd4ddb0ecac34281d8c9aef9ca04c40db90b4"
+                },
+                {
+                    "frames": 500000,
+                    "screen": "tests/zexall_1.png",
+                    "screenHash": "81ffe06eebdbba4191ff953f1cecd4ddb0ecac34281d8c9aef9ca04c40db90b4"
+                },
+                {
+                    "frames": 600000,
+                    "screen": "tests/zexall_2.png",
+                    "screenHash": "cd02f48aab07b72602ee345d4ce9d7c2081559504b5ef8b30f8387e2f6d28a1b"
+                },
+                {
+                    "frames": 700000,
+                    "screen": "tests/zexall_3.png",
+                    "screenHash": "d20c2bcddce77f300490b2dcf03c04330586423f0e3f01d099fc6f928cadc207"
+                },
+                {
+                    "frames": 750000,
+                    "screen": "tests/zexall_4.png",
+                    "screenHash": "7222ec0fa674b8903603b3ddc367574872a3a2f38b82160bd5405b8e68bfe464"
+                }
             ]
         },
-
         {
             "id": "zexdoc",
             "name": "zexdoc",
@@ -542,18 +906,48 @@
             "author": "Frank D. Cringle",
             "source": "https://mdfs.net/Software/Z80/Exerciser/",
             "steps": [
-                { "frames": 100000, "screen": "tests/zexdoc_1.png" },
-                { "frames": 200000, "screen": "tests/zexdoc_1.png" },
-                { "frames": 300000, "screen": "tests/zexdoc_1.png" },
-                { "frames": 400000, "screen": "tests/zexdoc_1.png" },
-                { "frames": 500000, "screen": "tests/zexdoc_2.png" },
-                { "frames": 600000, "screen": "tests/zexdoc_3.png" },
-                { "frames": 700000, "screen": "tests/zexdoc_4.png" },
-                { "frames": 750000, "screen": "tests/zexdoc_5.png" }
+                {
+                    "frames": 100000,
+                    "screen": "tests/zexdoc_1.png",
+                    "screenHash": "99607d4ca43dda939d7061912a1183cd1a1beb2b2a537f75012ef6717def371c"
+                },
+                {
+                    "frames": 200000,
+                    "screen": "tests/zexdoc_1.png",
+                    "screenHash": "99607d4ca43dda939d7061912a1183cd1a1beb2b2a537f75012ef6717def371c"
+                },
+                {
+                    "frames": 300000,
+                    "screen": "tests/zexdoc_1.png",
+                    "screenHash": "99607d4ca43dda939d7061912a1183cd1a1beb2b2a537f75012ef6717def371c"
+                },
+                {
+                    "frames": 400000,
+                    "screen": "tests/zexdoc_1.png",
+                    "screenHash": "99607d4ca43dda939d7061912a1183cd1a1beb2b2a537f75012ef6717def371c"
+                },
+                {
+                    "frames": 500000,
+                    "screen": "tests/zexdoc_2.png",
+                    "screenHash": "b278de331424b1e3be89e0cad4e8a4ff0b9f285cf753042a7b9de34dd877079f"
+                },
+                {
+                    "frames": 600000,
+                    "screen": "tests/zexdoc_3.png",
+                    "screenHash": "9c811d21533070a00c71bd02c1c7522b763621a35cf517c2c22926e78e65627e"
+                },
+                {
+                    "frames": 700000,
+                    "screen": "tests/zexdoc_4.png",
+                    "screenHash": "d255d2520359e900abc29b743cafcdb69c1f3ac38ad6e01d6f47440b693e0f82"
+                },
+                {
+                    "frames": 750000,
+                    "screen": "tests/zexdoc_5.png",
+                    "screenHash": "7222ec0fa674b8903603b3ddc367574872a3a2f38b82160bd5405b8e68bfe464"
+                }
             ]
         },
-
-
         {
             "id": "halt2int early",
             "name": "HALT2INT early",
@@ -566,7 +960,11 @@
             "author": "Woodmass, Mark",
             "source": "https://github.com/redcode/Z80/wiki/HALT2INT",
             "steps": [
-                { "frames": 100, "screen": "tests/halt2int_early.png" }
+                {
+                    "frames": 100,
+                    "screen": "tests/halt2int_early.png",
+                    "screenHash": "14c1970ce0d8910b83cb5d45fbf0ebc990124698b55e893eacc25a63478de095"
+                }
             ]
         },
         {
@@ -577,13 +975,16 @@
             "machine": "48k",
             "earlyTimings": false,
             "palette": "default",
-            "enabled": false,
+            "enabled": true,
             "author": "Woodmass, Mark",
             "source": "https://github.com/redcode/Z80/wiki/HALT2INT",
             "steps": [
-                { "frames": 100, "screen": "tests/halt2int_late.png" }
+                {
+                    "frames": 100,
+                    "screen": "tests/halt2int_late.png",
+                    "screenHash": "14c1970ce0d8910b83cb5d45fbf0ebc990124698b55e893eacc25a63478de095"
+                }
             ]
         }
-
     ]
 }
