@@ -41,6 +41,7 @@ export function savePNG(filePath, data, width, height) {
     const buffer = PNG.sync.write(png);
     mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, buffer);
+    return buffer;
 }
 
 /**

@@ -98,11 +98,11 @@ class Scenario {
             if (!diff.matches) {
                 const actualPath = join(artifactsPath, `${safeName}-actual.png`);
                 const resolvedActual = resolve(actualPath);
-                savePNG(resolvedActual, fb, dims.width, dims.height);
+                const actualPng = savePNG(resolvedActual, fb, dims.width, dims.height);
                 const diffPng = createDiffPNG(actual, expected, step.tolerance);
 
                 annotate(`FAIL: ${this.name} @ frame ${totalFrames}`);
-                annotate(`Actual: ${actualPath}`, { path: resolvedActual });
+                annotate(`Actual: ${actualPath}`, { contentType: 'image/png', body: actualPng });
                 annotate(`Pixels differ: ${diff.diffCount} (${diff.diffPercent}%)`, { contentType: 'image/png', body: diffPng });
 
                 expect.fail(

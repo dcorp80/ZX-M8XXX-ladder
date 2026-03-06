@@ -4,7 +4,7 @@ const __REPORT_DIR__ = 'reports'
 
 export default defineConfig({
     test: {
-        include: ['tests/headless/**/*.test.js'],
+        include: ['tests/headless/**/*.test.js', 'tests/unit/**/*.test.js'],
         testTimeout: 30_000,
         pool: 'forks',
         fileParallelism: false,
