@@ -31,13 +31,24 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "clean:reports": "rm -rf reports .vitest-reports",
+    "test": "npm run test:headless && npm run test:unit && npm run test:report",
+    "test:unit": "vitest run --project unit --coverage --outputFile.blob=.vitest-reports/unit.json",
+    "test:headless": "vitest run --project headless --outputFile.blob=.vitest-reports/headless.json",
+    "test:report": "vitest run --merge-reports=.vitest-reports --coverage --reporter=html --outputFile.html=reports/index.html",
+    "test:report:ci": "vitest run --merge-reports=.vitest-reports --coverage --reporter=junit --reporter=github-actions --outputFile.junit=reports/junit.xml",
+    "test:update-hashes": "node tests/headless/update-hashes.js",
+    "test:verify-hashes": "node tests/headless/update-hashes.js --verify"
   },
   "dependencies": {
     "pako": "^2.1.0"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/ui": "^4.0.18",
+    "pngjs": "^7.0.0",
     "puppeteer": "^24.37.5",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   }
 }
