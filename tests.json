@@ -956,7 +956,7 @@
             "machine": "48k",
             "earlyTimings": true,
             "palette": "default",
-            "enabled": true,
+            "enabled": false,
             "author": "Woodmass, Mark",
             "source": "https://github.com/redcode/Z80/wiki/HALT2INT",
             "steps": [

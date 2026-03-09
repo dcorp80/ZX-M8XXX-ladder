@@ -32,11 +32,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean:reports": "rm -rf reports .vitest-reports",
-    "test": "npm run test:headless && npm run test:unit && npm run test:report:html",
+    "test": "npm run test:headless && npm run test:unit && npm run test:report",
     "test:unit": "vitest run --project unit --coverage --outputFile.blob=.vitest-reports/unit.json",
     "test:headless": "vitest run --project headless --outputFile.blob=.vitest-reports/headless.json",
     "test:report": "vitest run --merge-reports=.vitest-reports --coverage --reporter=html --outputFile.html=reports/index.html",
-    "test:report:ci": "vitest run --merge-reports=.vitest-reports --coverage --reporter=html --reporter=junit --reporter=github-actions --outputFile.html=reports/index.html --outputFile.junit=reports/junit.xml",
+    "test:report:ci": "vitest run --merge-reports=.vitest-reports --coverage --reporter=junit --reporter=github-actions --outputFile.junit=reports/junit.xml",
     "test:update-hashes": "node tests/headless/update-hashes.js",
     "test:verify-hashes": "node tests/headless/update-hashes.js --verify"
   },
