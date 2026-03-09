@@ -1,3 +1,22 @@
+# ROMs
 roms/*
+!roms/.gitkeep
+!roms/README.md
+
+# Claude
 CLAUDE.md
-.claude
+.claude/
+
+# Reports
+reports/
+.vitest-reports
+
+# Dependencies
+node_modules/
+
+# IDEs
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
